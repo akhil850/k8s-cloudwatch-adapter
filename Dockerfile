@@ -1,4 +1,4 @@
-FROM golang:1.14-alpine as builder
+FROM golang:1.24-alpine as builder
 RUN apk add -U --no-cache ca-certificates
 WORKDIR ${GOPATH}/src/github.com/awslabs/k8s-cloudwatch-adapter
 COPY . ./
