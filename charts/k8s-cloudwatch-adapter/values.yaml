@@ -1,6 +1,6 @@
 image:
   pullPolicy: IfNotPresent
-  repository: chankh/k8s-cloudwatch-adapter
+  repository: akhil850/k8s-cloudwatch-adapter
   tag: "v0.10.0"
 
 ## Optional array of imagePullSecrets containing private registry credentials

@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/kubernetes-incubator/custom-metrics-apiserver/pkg/provider"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -33,12 +34,24 @@ func (p *cloudwatchProvider) GetExternalMetric(namespace string, metricSelector 
 		return nil, errors.NewBadRequest(err.Error())
 	}
 
-	var quantity resource.Quantity
+	// --- OLD (Deleted) ---
+	// if len(metricValue) == 0 || len(metricValue[0].Values) == 0 {
+	//     quantity = *resource.NewMilliQuantity(0, resource.DecimalSI) // <--- DANGEROUS: Sets value to 0
+	// } else {
+	//     quantity = *resource.NewQuantity(int64(aws.Float64Value(metricValue[0].Values[0])), resource.DecimalSI)
+	// }
+
+	// [NEW SAFE LOGIC]
+	// If CloudWatch returns empty data, we return an error. 
+	// This forces the HPA to "freeze" (pause scaling) instead of scaling down to 0.
 	if len(metricValue) == 0 || len(metricValue[0].Values) == 0 {
-		quantity = *resource.NewMilliQuantity(0, resource.DecimalSI)
-	} else {
-		quantity = *resource.NewQuantity(int64(aws.Float64Value(metricValue[0].Values[0])), resource.DecimalSI)
+		klog.Warningf("CloudWatch returned no data for metric %s. Returning error to freeze HPA.", info.Metric)
+		return nil, fmt.Errorf("no data points found for metric %s", info.Metric)
 	}
+
+	// Data exists, so we proceed safely
+	quantity := *resource.NewQuantity(int64(aws.Float64Value(metricValue[0].Values[0])), resource.DecimalSI)
+
 	externalMetricValue := external_metrics.ExternalMetricValue{
 		MetricName: info.Metric,
 		Value:      quantity,

@@ -1,4 +1,4 @@
-REGISTRY?=chankh
+REGISTRY?=akhil850
 IMAGE?=k8s-cloudwatch-adapter
 TEMP_DIR:=$(shell mktemp -d /tmp/$(IMAGE).XXXXXX)
 ARCH?=amd64
