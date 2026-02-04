@@ -34,23 +34,22 @@ func (p *cloudwatchProvider) GetExternalMetric(namespace string, metricSelector 
 		return nil, errors.NewBadRequest(err.Error())
 	}
 
-	// --- OLD (Deleted) ---
-	// if len(metricValue) == 0 || len(metricValue[0].Values) == 0 {
-	//     quantity = *resource.NewMilliQuantity(0, resource.DecimalSI) // <--- DANGEROUS: Sets value to 0
-	// } else {
-	//     quantity = *resource.NewQuantity(int64(aws.Float64Value(metricValue[0].Values[0])), resource.DecimalSI)
-	// }
-
-	// [NEW SAFE LOGIC]
-	// If CloudWatch returns empty data, we return an error. 
-	// This forces the HPA to "freeze" (pause scaling) instead of scaling down to 0.
+	// [SAFETY CHECK]
+	// If CloudWatch returns empty data, we return an error instead of 0.
+	// This forces the HPA to "freeze" (pause scaling) rather than scaling down dangerously.
 	if len(metricValue) == 0 || len(metricValue[0].Values) == 0 {
 		klog.Warningf("CloudWatch returned no data for metric %s. Returning error to freeze HPA.", info.Metric)
 		return nil, fmt.Errorf("no data points found for metric %s", info.Metric)
 	}
 
-	// Data exists, so we proceed safely
-	quantity := *resource.NewQuantity(int64(aws.Float64Value(metricValue[0].Values[0])), resource.DecimalSI)
+	// Data exists, so we proceed safely.
+	// We extract the value here to use it for both the HPA and the logs.
+	rawValue := aws.Float64Value(metricValue[0].Values[0])
+	quantity := *resource.NewQuantity(int64(rawValue), resource.DecimalSI)
+
+	// [SUCCESS LOG]
+	// This prints the exact value the HPA will receive, making debugging much easier.
+	klog.Infof("Successfully fetched CloudWatch metric: %s (Namespace: %s). Value: %s", info.Metric, namespace, quantity.String())
 
 	externalMetricValue := external_metrics.ExternalMetricValue{
 		MetricName: info.Metric,
