@@ -107,18 +107,19 @@ spec:
   selector:
     app: k8s-cloudwatch-adapter
 ---
-apiVersion: apiregistration.k8s.io/v1beta1
+apiVersion: apiregistration.k8s.io/v1
 kind: APIService
 metadata:
   name: v1beta1.external.metrics.k8s.io
 spec:
+  group: external.metrics.k8s.io
+  groupPriorityMinimum: 100
+  insecureSkipTLSVerify: true
   service:
     name: k8s-cloudwatch-adapter
     namespace: custom-metrics
-  group: external.metrics.k8s.io
+    port: 443
   version: v1beta1
-  insecureSkipTLSVerify: true
-  groupPriorityMinimum: 100
   versionPriority: 100
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -160,18 +161,31 @@ subjects:
     name: horizontal-pod-autoscaler
     namespace: kube-system
 ---
-apiVersion: apiextensions.k8s.io/v1beta1
+apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: externalmetrics.metrics.aws
 spec:
   group: metrics.aws
-  version: v1alpha1
   names:
     kind: ExternalMetric
+    listKind: ExternalMetricList
     plural: externalmetrics
     singular: externalmetric
   scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          x-kubernetes-preserve-unknown-fields: true
+          properties:
+            host:
+              type: string
+            port:
+              type: string
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
