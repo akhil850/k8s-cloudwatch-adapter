@@ -142,6 +142,12 @@ Our immediate next steps involve:
 
 ## More docs
 
+### Development images
+
+The GitHub Actions workflow publishes images to `ghcr.io/akhil850/k8s-cloudwatch-adapter` on pushes to `master` and `adapter-fixes`. Each image is tagged with the full commit SHA; version-tag pushes also publish the version tag. Pull requests build without publishing. Manual runs can optionally publish and update `latest`.
+
+Use `ghcr.io/akhil850/k8s-cloudwatch-adapter:<full-commit-sha>` as the image in your EKS test deployment. The workflow authenticates with GitHub's built-in token and requires no Docker Hub secrets. New GHCR packages default to private: make the package public in its GitHub package settings for anonymous pulls, or configure an EKS `imagePullSecret` with a GitHub personal access token (classic) that has `read:packages` permission and access to the package.
+
 - [Configuring cross account metric example](docs/cross-account.md)
 - [ExternalMetric CRD schema](docs/schema.md)
 

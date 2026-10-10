@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the commit image to Docker Hub
+        description: Publish the commit image to GitHub Container Registry
         type: boolean
         default: false
       update_latest:
@@ -21,10 +21,13 @@ permissions:
   contents: read
 
 env:
-  IMAGE_NAME: docker.io/akhil850/k8s-cloudwatch-adapter
+  IMAGE_NAME: ghcr.io/akhil850/k8s-cloudwatch-adapter
 
 jobs:
   build:
+    permissions:
+      contents: read
+      packages: write
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -33,17 +36,16 @@ jobs:
         with:
           persist-credentials: false
       - name: Build Docker image
-        run: docker build --file Dockerfile --tag "${IMAGE_NAME}:${GITHUB_SHA}" .
-      - name: Log into Docker Hub
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish)
+        run: docker build --file Dockerfile --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" --label "org.opencontainers.image.revision=${GITHUB_SHA}" --tag "${IMAGE_NAME}:${GITHUB_SHA}" .
+      - name: Log into GitHub Container Registry
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)
         env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          REGISTRY_USERNAME: ${{ github.actor }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          test -n "$DOCKERHUB_USERNAME" && test -n "$DOCKERHUB_TOKEN"
-          printf '%s' "$DOCKERHUB_TOKEN" | docker login docker.io --username "$DOCKERHUB_USERNAME" --password-stdin
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USERNAME" --password-stdin
       - name: Publish image
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && inputs.publish)
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)
         env:
           UPDATE_LATEST: ${{ github.event_name == 'workflow_dispatch' && inputs.update_latest }}
         run: |
@@ -56,6 +58,6 @@ jobs:
             docker tag "${IMAGE_NAME}:${GITHUB_SHA}" "${IMAGE_NAME}:latest"
             docker push "${IMAGE_NAME}:latest"
           fi
-      - name: Log out of Docker Hub
+      - name: Log out of GitHub Container Registry
         if: always()
-        run: docker logout docker.io
+        run: docker logout ghcr.io
