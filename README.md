@@ -131,6 +131,8 @@ A critical enhancement has been implemented in `pkg/provider/provider_external.g
 
 ### Future Work
 
+See the [maintenance roadmap](ROADMAP.md) for prioritized reliability fixes, regression coverage, and release checks for this fork.
+
 Our immediate next steps involve:
 
 - Updating the Go programming language version.
