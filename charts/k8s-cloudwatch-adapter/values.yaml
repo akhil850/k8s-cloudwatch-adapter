@@ -1,7 +1,8 @@
+# Modified for this fork: pin the published multi-architecture test image.
 image:
   pullPolicy: IfNotPresent
-  repository: akhil850/k8s-cloudwatch-adapter
-  tag: "v0.10.0"
+  repository: ghcr.io/akhil850/k8s-cloudwatch-adapter
+  tag: "b9570c5ee2f42043ffca4344058c29730bf24a69"
 
 ## Optional array of imagePullSecrets containing private registry credentials
 ## Ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/

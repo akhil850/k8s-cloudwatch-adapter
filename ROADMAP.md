@@ -18,7 +18,7 @@ Missing data must never be reported as a successful zero measurement. An error p
 2. [ ] **Preserve fractional CloudWatch values.** Replace the integer truncation in the provider with a quantity conversion that preserves useful decimal precision. Verify values such as `0.9`, integer values, and valid zero.
 3. [ ] **Make region discovery reliable.** Prefer explicitly configured regions, use SDK metadata discovery with IMDSv2 support and bounded timeouts, and handle failures without panicking or treating error responses as region names. Verify configured-region operation without metadata access and metadata failure paths.
 4. [ ] **Handle informer deletion tombstones.** Unwrap `DeletedFinalStateUnknown` and use deletion-aware key extraction. Verify that ordinary deletions and tombstones both remove the metric from the cache and discovery results.
-5. [ ] **Update remaining Kubernetes manifests.** Migrate the Helm CRD, Helm APIService, and standalone CRD manifest to stable `v1` APIs with the required CRD schema and versions structure. Keep the combined deployment manifests consistent. Validate rendered charts and manifests against the client's supported Kubernetes versions.
+5. [x] **Update remaining Kubernetes manifests.** Helm and standalone registrations now use stable `v1` APIs, consistent permissive CRD schemas, and the published GHCR test image. Helm lint/render and schema validation pass. Non-production server-side validation and runtime checks remain required; see [the validation guide](docs/nonprod-validation.md).
 
 ## Regression coverage and release checks
 

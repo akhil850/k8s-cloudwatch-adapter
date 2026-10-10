@@ -1,3 +1,4 @@
+# Modified for this fork: stable CRD schema and pinned multi-architecture test image.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -48,7 +49,7 @@ spec:
         fsGroup: 65534
       containers:
         - name: k8s-cloudwatch-adapter
-          image: akhil850/k8s-cloudwatch-adapter:latest
+          image: ghcr.io/akhil850/k8s-cloudwatch-adapter:b9570c5ee2f42043ffca4344058c29730bf24a69
           imagePullPolicy: Always
           args:
             - /adapter
@@ -177,11 +178,6 @@ spec:
         openAPIV3Schema:
           type: object
           x-kubernetes-preserve-unknown-fields: true
-          properties:
-            host:
-              type: string
-            port:
-              type: string
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole

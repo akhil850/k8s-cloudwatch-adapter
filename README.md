@@ -156,6 +156,7 @@ Use `ghcr.io/akhil850/k8s-cloudwatch-adapter:<full-commit-sha>` as the image in 
 
 - [Configuring cross account metric example](docs/cross-account.md)
 - [ExternalMetric CRD schema](docs/schema.md)
+- [Non-production manifest validation](docs/nonprod-validation.md)
 
 ## License
 
