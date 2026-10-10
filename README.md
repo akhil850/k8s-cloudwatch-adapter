@@ -1,6 +1,6 @@
-[![Build Status](https://travis-ci.org/awslabs/k8s-cloudwatch-adapter.svg?branch=master)](https://travis-ci.org/awslabs/k8s-cloudwatch-adapter)
+[![Build Status](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/workflows/docker-publish.yml)
 [![GitHub
-release](https://img.shields.io/github/release/awslabs/k8s-cloudwatch-adapter/all.svg)](https://github.com/awslabs/k8s-cloudwatch-adapter/releases)
+release](https://img.shields.io/github/release/akhil850/k8s-cloudwatch-adapter/all.svg)](https://github.com/akhil850/k8s-cloudwatch-adapter/releases)
 [![docker image
 size](https://shields.beevelop.com/docker/image/image-size/akhil850/k8s-cloudwatch-adapter/latest.svg)](https://hub.docker.com/r/akhil850/k8s-cloudwatch-adapter)
 [![image
@@ -8,9 +8,13 @@ layers](https://shields.beevelop.com/docker/image/layers/akhil850/k8s-cloudwatch
 [![image
 pulls](https://shields.beevelop.com/docker/pulls/akhil850/k8s-cloudwatch-adapter.svg)](https://hub.docker.com/r/akhil850/k8s-cloudwatch-adapter)
 
-> Attention! This project has been archived and is no longer being worked on. If you are looking for a metrics server that can consume metrics from CloudWatch, please consider using the [KEDA](https://keda.sh) project instead. KEDA is a Kubernetes-based Event Driven Autoscaler. With KEDA, you can drive the scaling of any container in Kubernetes based on the number of events needing to be processed. For an overview of KEDA, see [An overview of Kubernetes Event-Driven Autoscaling](https://youtu.be/H5eZEq_wqSE).
-
 # Kubernetes Custom Metrics Adapter for Kubernetes
+
+An independently maintained fork of the AWS CloudWatch adapter for Kubernetes, with reliability fixes for existing deployments.
+
+The original implementation was developed by AWS and the contributors to [awslabs/k8s-cloudwatch-adapter](https://github.com/awslabs/k8s-cloudwatch-adapter). This fork is maintained independently and is not maintained or endorsed by AWS. Original copyright and attribution notices are preserved in [NOTICE](NOTICE), and the project remains licensed under [Apache License 2.0](LICENSE).
+
+This README has been modified for the independently maintained fork.
 
 An implementation of the Kubernetes [Custom Metrics API and External Metrics
 API](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#support-for-metrics-apis)
@@ -49,7 +53,7 @@ Requires a Kubernetes cluster with Metric Server deployed, Amazon EKS cluster is
 Now deploy the adapter to your Kubernetes cluster:
 
 ```bash
-$ kubectl apply -f https://raw.githubusercontent.com/awslabs/k8s-cloudwatch-adapter/master/deploy/adapter.yaml
+$ kubectl apply -f https://raw.githubusercontent.com/akhil850/k8s-cloudwatch-adapter/master/deploy/adapter.yaml
 namespace/custom-metrics created
 clusterrolebinding.rbac.authorization.k8s.io/k8s-cloudwatch-adapter:system:auth-delegator created
 rolebinding.rbac.authorization.k8s.io/k8s-cloudwatch-adapter-auth-reader created
@@ -112,7 +116,7 @@ Refer to this [guide](samples/sqs/README.md).
 
 ## Project Analysis and Enhancements
 
-This project, while officially archived, is being actively analyzed and improved. The goal is to modernize and enhance its functionality. A detailed technical breakdown can be found in `GEMINI.md`.
+This fork focuses on reliability improvements for existing deployments. See the [maintenance roadmap](ROADMAP.md) for the prioritized fixes and validation plans.
 
 ### Architecture Overview
 
@@ -157,4 +161,4 @@ This library is licensed under the Apache 2.0 License.
 
 ## Issues
 
-Report any issues in the [Github Issues](https://github.com/awslabs/k8s-cloudwatch-adapter/issues)
+Report issues with this fork in [GitHub Issues](https://github.com/akhil850/k8s-cloudwatch-adapter/issues).
