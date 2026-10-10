@@ -34,6 +34,10 @@ Add focused tests alongside each fix rather than postponing coverage until the e
 
 ## Later modernization
 
-After the reliability fixes, evaluate Go, Kubernetes client, and AWS SDK upgrades against the client's compatibility requirements. Keep dependency modernization separate from behavior changes where practical.
+The build baseline now uses Go 1.27.2 and targets `linux/amd64` and `linux/arm64` through Buildx. Provider regression tests cover missing results, empty datapoints, query failures, genuine zero, and a positive integer measurement. Fractional-value coverage remains part of the precision fix.
+
+Next, migrate the metrics API server from the historical `kubernetes-incubator` module to `sigs.k8s.io/custom-metrics-apiserver` and update Kubernetes libraries together. The upstream `v1.36.0` release is the migration starting point; Kubernetes 1.36 and 1.37 are the reported EKS validation targets. Then migrate AWS SDK v1 to v2. Confirm runtime compatibility in both cluster versions and on both node architectures before rollout.
+
+Dependency modernization starts from the tested build baseline above. Keep library migrations separate from the remaining reliability fixes where practical, and preserve the missing-data behavior throughout.
 
 This roadmap records planned work; unchecked items are not implemented or validated yet.

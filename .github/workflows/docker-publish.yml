@@ -29,14 +29,14 @@ jobs:
       contents: read
       packages: write
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Build Docker image
-        run: docker build --file Dockerfile --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" --label "org.opencontainers.image.revision=${GITHUB_SHA}" --tag "${IMAGE_NAME}:${GITHUB_SHA}" .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
       - name: Log into GitHub Container Registry
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)
         env:
@@ -44,20 +44,24 @@ jobs:
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USERNAME" --password-stdin
-      - name: Publish image
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)
+      - name: Build both architectures and optionally publish
         env:
+          PUBLISH: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
           UPDATE_LATEST: ${{ github.event_name == 'workflow_dispatch' && inputs.update_latest }}
         run: |
-          docker push "${IMAGE_NAME}:${GITHUB_SHA}"
+          tags=(--tag "${IMAGE_NAME}:${GITHUB_SHA}")
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            docker tag "${IMAGE_NAME}:${GITHUB_SHA}" "${IMAGE_NAME}:${GITHUB_REF_NAME}"
-            docker push "${IMAGE_NAME}:${GITHUB_REF_NAME}"
+            tags+=(--tag "${IMAGE_NAME}:${GITHUB_REF_NAME}")
           fi
-          if [[ "$UPDATE_LATEST" == true ]]; then
-            docker tag "${IMAGE_NAME}:${GITHUB_SHA}" "${IMAGE_NAME}:latest"
-            docker push "${IMAGE_NAME}:latest"
+          if [[ "$PUBLISH" == true && "$UPDATE_LATEST" == true ]]; then
+            tags+=(--tag "${IMAGE_NAME}:latest")
           fi
+          output=(--output type=cacheonly)
+          if [[ "$PUBLISH" == true ]]; then output=(--push); fi
+          docker buildx build --platform linux/amd64,linux/arm64 \
+            --file Dockerfile "${tags[@]}" "${output[@]}" \
+            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" .
       - name: Log out of GitHub Container Registry
         if: always()
         run: docker logout ghcr.io

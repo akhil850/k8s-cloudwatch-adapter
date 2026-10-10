@@ -150,6 +150,8 @@ Our immediate next steps involve:
 
 The GitHub Actions workflow publishes images to `ghcr.io/akhil850/k8s-cloudwatch-adapter` on pushes to `master` and `adapter-fixes`. Each image is tagged with the full commit SHA; version-tag pushes also publish the version tag. Pull requests build without publishing. Manual runs can optionally publish and update `latest`.
 
+Each tag contains both `linux/amd64` and `linux/arm64` images for mixed EKS fleets. The Dockerfile uses Go 1.27.2 to cross-compile for each target, runs the package tests before compilation, and packages the static binary with CA certificates and license notices in a minimal runtime image. Library modernization is tracked in [ROADMAP.md](ROADMAP.md); these build changes alone do not establish Kubernetes 1.36/1.37 runtime compatibility.
+
 Use `ghcr.io/akhil850/k8s-cloudwatch-adapter:<full-commit-sha>` as the image in your EKS test deployment. The workflow authenticates with GitHub's built-in token and requires no Docker Hub secrets. New GHCR packages default to private: make the package public in its GitHub package settings for anonymous pulls, or configure an EKS `imagePullSecret` with a GitHub personal access token (classic) that has `read:packages` permission and access to the package.
 
 - [Configuring cross account metric example](docs/cross-account.md)
