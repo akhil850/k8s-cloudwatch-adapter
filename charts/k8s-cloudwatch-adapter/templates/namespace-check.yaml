@@ -1,0 +1,4 @@
+{{/* Modified for this fork: keep Helm release and adapter namespaces aligned. */}}
+{{- if ne .Release.Namespace "custom-metrics" }}
+{{- fail "Install this chart with --namespace custom-metrics. To use another namespace, update the fork's manifests and this check." }}
+{{- end }}

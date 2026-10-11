@@ -8,7 +8,7 @@ metadata:
 spec:
   service:
     name: {{ include "k8s-cloudwatch-adapter.fullname" . }}
-    namespace: {{ .Release.Namespace }}
+    namespace: custom-metrics
     port: 443
   group: external.metrics.k8s.io
   version: v1beta1

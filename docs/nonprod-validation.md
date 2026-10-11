@@ -8,7 +8,9 @@ ghcr.io/akhil850/k8s-cloudwatch-adapter:b9570c5ee2f42043ffca4344058c29730bf24a69
 
 ## Choose one installation method
 
-`deploy/adapter.yaml` installs into `custom-metrics`; `deploy/eks.yaml` installs into an existing `monitoring` namespace. Use one combined manifest, or use the two Helm charts together. Do not install both methods into the same cluster.
+The raw manifests are split by purpose: `deploy/crd.yaml` defines only the ExternalMetric CRD, and `deploy/adapter.yaml` installs the adapter and all its RBAC into `custom-metrics`. Alternatively, use the two Helm charts together, also in `custom-metrics`. Do not install both methods into the same cluster. The redundant `deploy/eks.yaml` has been removed.
+
+The adapter namespace is pinned in the manifests and charts. Helm requires `--namespace custom-metrics`; for another namespace, clone the repository and update the adapter namespace references and chart namespace checks. Keep the authentication RoleBinding and HPA service-account references in `kube-system`. Cluster-scoped resources, including the CRD and APIService, have no metadata namespace.
 
 The CRD and APIService are cluster-wide. An existing external metrics adapter may already own them; check before applying:
 
@@ -26,21 +28,23 @@ The CRD remains `metrics.aws/v1alpha1`; the external metrics API remains `extern
 
 Retain the existing service-account IAM role annotation and AWS environment configuration that your adapter needs. The role needs `cloudwatch:GetMetricData` and any permissions required by your cross-account configuration. Configure a registry pull secret if the GHCR package is private.
 
-For Helm, use `serviceAccount.irsaIamRole`, `imagePullSecrets`, and your existing values overrides. The CRD chart and adapter chart must target the same namespace and service-account name. Both combined manifests and the chart defaults pin the test image above; no new binary is required for this manifest-only migration.
+For Helm, use `serviceAccount.irsaIamRole`, `imagePullSecrets`, and your existing values overrides. The CRD chart and adapter chart must target the same namespace and service-account name. The adapter manifest and chart defaults pin the test image above; no new binary is required for this manifest-only migration.
 
-## Apply the combined manifest
+## Apply the raw manifests
 
 ```bash
+kubectl apply --dry-run=server -f deploy/crd.yaml
+kubectl apply -f deploy/crd.yaml
+kubectl wait --for=condition=Established crd/externalmetrics.metrics.aws --timeout=60s
 kubectl apply --dry-run=server -f deploy/adapter.yaml
 kubectl apply -f deploy/adapter.yaml
-kubectl wait --for=condition=Established crd/externalmetrics.metrics.aws --timeout=60s
 kubectl rollout status deployment/k8s-cloudwatch-adapter -n custom-metrics --timeout=180s
 kubectl get apiservice v1beta1.external.metrics.k8s.io
 kubectl get --raw /apis/external.metrics.k8s.io/v1beta1
 kubectl logs -n custom-metrics deployment/k8s-cloudwatch-adapter
 ```
 
-For the EKS manifest, create `monitoring` if needed, then substitute `deploy/eks.yaml` and namespace `monitoring`. Perform the dry run after adding your IAM and registry settings.
+Perform the adapter dry run after adding your IAM and registry settings. Applying `crd.yaml` alone does not install an adapter or grant its service account permissions; those resources belong to `adapter.yaml`.
 
 ## Helm alternative
 

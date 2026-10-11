@@ -52,8 +52,12 @@ Requires a Kubernetes cluster with Metric Server deployed, Amazon EKS cluster is
 
 Now deploy the adapter to your Kubernetes cluster:
 
+Apply the CRD first, then the adapter and its RBAC. Raw manifests and Helm charts pin the adapter namespace to `custom-metrics`. To use another namespace, clone the repository and edit the adapter namespace references and chart namespace checks. The authentication RoleBinding and HPA service-account references in `kube-system` must remain there. Configure your IAM role and any private-registry pull secret before applying. See the [non-production validation guide](docs/nonprod-validation.md).
+
 ```bash
-$ kubectl apply -f https://raw.githubusercontent.com/akhil850/k8s-cloudwatch-adapter/master/deploy/adapter.yaml
+$ kubectl apply -f deploy/crd.yaml
+$ kubectl wait --for=condition=Established crd/externalmetrics.metrics.aws --timeout=60s
+$ kubectl apply -f deploy/adapter.yaml
 namespace/custom-metrics created
 clusterrolebinding.rbac.authorization.k8s.io/k8s-cloudwatch-adapter:system:auth-delegator created
 rolebinding.rbac.authorization.k8s.io/k8s-cloudwatch-adapter-auth-reader created
@@ -76,10 +80,10 @@ Role Binding, along with the deployment of the adapter.
 Alternatively the crd and adapter can be deployed using the Helm chart in the `/charts` directory:
 
 ```bash
-$ helm install k8s-cloudwatch-adapter-crd ./charts/k8s-cloudwatch-adapter-crd
+$ helm install k8s-cloudwatch-adapter-crd ./charts/k8s-cloudwatch-adapter-crd --namespace custom-metrics --create-namespace
 NAME: k8s-cloudwatch-adapter-crd
 LAST DEPLOYED: Thu Sep 17 11:36:53 2020
-NAMESPACE: default
+NAMESPACE: custom-metrics
 STATUS: deployed
 REVISION: 1
 TEST SUITE: None

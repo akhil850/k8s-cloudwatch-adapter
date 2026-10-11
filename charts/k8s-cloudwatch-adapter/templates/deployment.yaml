@@ -1,6 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  namespace: custom-metrics
   labels:
     {{- include "k8s-cloudwatch-adapter.labels" . | nindent 4 }}
     {{- with .Values.labels }}
