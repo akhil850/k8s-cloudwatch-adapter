@@ -27,4 +27,4 @@ roleRef:
 subjects:
   - name: {{ template "k8s-cloudwatch-adapter-crd.serviceAccountName" . }}
     kind: ServiceAccount
-    namespace: {{ .Release.Namespace }}
+    namespace: custom-metrics
