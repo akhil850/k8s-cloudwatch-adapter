@@ -2,7 +2,7 @@
 
 This fork supports an existing client deployment of the archived AWS adapter. KEDA does not fit that system's requirements, so the goal is to maintain this adapter and improve its reliability.
 
-Original production baseline: `351e923`, deployed from Docker Hub as reported by the maintainer. The build and manifest milestone was merged through PR #1 into `master` at `2a27c66`; its tested GHCR image is `b9570c5ee2f42043ffca4344058c29730bf24a69`. The build milestone and repository maintenance follow-up are maintained on `master`. The merged `adapter-fixes` branch is retired; create a new branch from `master` for the next milestone.
+Original production baseline: `351e923`, deployed from Docker Hub as reported by the maintainer. The build and manifest milestone was merged through PR #1 into `master` at `2a27c66`; its tested GHCR image is `b9570c5ee2f42043ffca4344058c29730bf24a69`. The build milestone and repository maintenance follow-up are maintained on `master`. The merged `adapter-fixes` branch is retired. The `reliability-fixes` branch groups cache concurrency, fractional precision, and deletion handling into three independent commits before dependency migrations.
 
 ## Completed build and manifest milestone
 
@@ -35,7 +35,7 @@ Missing data must never be reported as a successful zero measurement. An error p
 
 ## Prioritized fixes
 
-1. [ ] **Protect metric discovery from concurrent cache writes.** Use the cache mutex when listing metric names. Also remove the leading empty entries caused by allocating a nonzero slice length before appending. Verify concurrent list/update/remove operations and run the race detector where supported.
+1. [x] **Protect metric discovery from concurrent cache writes.** Listing now holds the cache read lock and starts with an empty slice, removing leading empty entries. Regression tests cover discovery updates/removals and concurrent list/get/update/remove operations; cache tests passed locally.
 2. [ ] **Preserve fractional CloudWatch values.** Replace the integer truncation in the provider with a quantity conversion that preserves useful decimal precision. Verify values such as `0.9`, integer values, and valid zero.
 3. [ ] **Make region discovery reliable.** Prefer explicitly configured regions, use SDK metadata discovery with IMDSv2 support and bounded timeouts, and handle failures without panicking or treating error responses as region names. Verify configured-region operation without metadata access and metadata failure paths.
 4. [ ] **Handle informer deletion tombstones.** Unwrap `DeletedFinalStateUnknown` and use deletion-aware key extraction. Verify that ordinary deletions and tombstones both remove the metric from the cache and discovery results.
@@ -47,20 +47,20 @@ Add focused tests alongside each fix rather than postponing coverage until the e
 
 - [x] Provider tests for missing results, empty datapoints, query errors, valid zero, and positive integer values.
 - [ ] Provider tests for fractional values alongside the precision fix.
-- [ ] Cache tests for concurrent access and metric-name listing.
+- [x] Cache tests for concurrent access and metric-name listing.
 - [ ] Controller tests for ordinary deletions and deletion tombstones.
 - [ ] Region discovery tests for configured regions and metadata failures.
 - [x] Run `go test ./pkg/...` including the new provider regression tests; compile and verify Linux binaries for both architectures.
-- [ ] Run appropriate race checks with the cache concurrency fix.
+- [ ] Run the Linux CI race checks added with the cache concurrency fix. The image build now depends on `go test -race ./pkg/...`; CI execution remains pending.
 - [x] Build and publish a new image with a distinct commit tag, preserving the deployed image as a rollback target.
 - [x] Validate the baseline image and migrated manifests in non-production, as reported by the maintainer. Tests additionally cover missing-data, query-error, and genuine-zero behavior.
 - [ ] Confirm both architecture placements and the final manifest cleanup in EKS before production rollout.
 
-## Next milestone: dependency modernization
+## Dependency modernization after reliability fixes
 
 The build baseline now uses Go 1.27.2 and targets `linux/amd64` and `linux/arm64` through Buildx. Provider regression tests cover missing results, empty datapoints, query failures, genuine zero, and a positive integer measurement. Fractional-value coverage remains part of the precision fix.
 
-Next, migrate the metrics API server from the historical `kubernetes-incubator` module to `sigs.k8s.io/custom-metrics-apiserver` and update Kubernetes libraries together. The upstream `v1.36.0` release is the migration starting point; Kubernetes 1.36 and 1.37 are the reported EKS validation targets. Then migrate AWS SDK v1 to v2. Confirm runtime compatibility in both cluster versions and on both node architectures before rollout.
+After the three reliability fixes, migrate AWS SDK v1 to v2 together with region discovery. Then migrate the metrics API server from the historical `kubernetes-incubator` module to `sigs.k8s.io/custom-metrics-apiserver` and update Kubernetes libraries together, last. The previously identified upstream `v1.36.0` release is a migration candidate; verify the release selection when that work starts. Kubernetes 1.36 and 1.37 are the reported EKS validation targets. Confirm runtime compatibility in both cluster versions and on both node architectures before rollout.
 
 - [ ] Migrate Kubernetes libraries and the metrics API server together, preserving provider regression behavior.
 - [ ] Migrate the historical `github.com/awslabs/k8s-cloudwatch-adapter` Go module path to this fork with all imports and generated-client tooling. Preserve the existing `metrics.aws` API group and copyright notices.
