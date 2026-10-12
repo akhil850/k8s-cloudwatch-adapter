@@ -60,9 +60,12 @@ Helm does not automatically adopt resources previously installed with `kubectl`;
 ## Runtime checks
 
 - Run the adapter on an `amd64` node and an `arm64` node in turn, using the same image tag and a Deployment node selector. For Helm, put `nodeSelector: {kubernetes.io/arch: amd64}` (or `arm64`) in your values file. Confirm startup and metric retrieval on each.
-- Query an existing ExternalMetric by its namespace and resource name through `/apis/external.metrics.k8s.io/v1beta1/<namespace>/<metric-name>` and compare its value with CloudWatch.
+- Query an existing ExternalMetric by its namespace and resource name through `/apis/external.metrics.k8s.io/v1beta1/namespaces/<namespace>/<metric-name>` and compare its value with CloudWatch.
 - Confirm that the HPA reads a normal measurement and a genuine zero correctly.
 - In an isolated test setup, simulate a failed CloudWatch query and missing datapoints. Expect an API error and an unknown HPA metric, not a successful zero value.
 - Restore access/data and confirm metric recovery. Other healthy HPA metrics can still trigger scale-up when this metric is unknown.
+- Query an isolated test metric with a fractional value such as `0.9`. Expect an equivalent quantity such as `900m`, rather than `0`; compare numeric values rather than display formatting.
+- Delete an isolated test ExternalMetric and verify it disappears from discovery and queries return an error. Recreate it and verify metric retrieval recovers. Do not delete the CRD.
+- While updating test metric definitions, repeatedly request discovery and confirm the adapter remains healthy.
 
 Keep the old image reference and configuration for rollback. Applying these manifests does not upgrade the adapter's Kubernetes or AWS libraries; runtime compatibility still needs testing on both reported cluster versions, 1.36 and 1.37.

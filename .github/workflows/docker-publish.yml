@@ -2,7 +2,7 @@ name: Docker build and publish
 
 on:
   push:
-    branches: [master]
+    branches: [master, reliability-fixes]
     tags: ['v*.*.*']
   pull_request:
     branches: [master]
