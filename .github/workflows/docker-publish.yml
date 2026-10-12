@@ -2,7 +2,7 @@ name: Docker build and publish
 
 on:
   push:
-    branches: [master, adapter-fixes]
+    branches: [master]
     tags: ['v*.*.*']
   pull_request:
     branches: [master]

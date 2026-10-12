@@ -8,6 +8,8 @@ Before we start, let's assume the adapter is running with an IAM role called `k8
 in Account A. To read the metrics from Account B, you will need to create an IAM role with the
 necessary permissions in Account B, let's call this `target-cloudwatch-role`.
 
+Attach this permissions policy to `target-cloudwatch-role` in Account B:
+
 ```json
 {
     "Version": "2012-10-17",
@@ -18,18 +20,25 @@ necessary permissions in Account B, let's call this `target-cloudwatch-role`.
                 "cloudwatch:GetMetricData"
             ],
             "Resource": "*"
-        },
-        {
-            "Effect": "Allow",
-            "Action": "iam:PassRole",
-            "Resource": "arn:aws:iam::<AccountB>:role/target-cloudwatch-role"
         }
     ]
 }
 ```
 
-Make sure we add our `k8s-cloudwatch-adapter-service-role` as a trusted entity so that it is
-able to perform `sts:AssumeRole`.
+Attach the following permissions policy to `k8s-cloudwatch-adapter-service-role` in Account A so it can assume the target role:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "sts:AssumeRole",
+    "Resource": "arn:aws:iam::<AccountB>:role/target-cloudwatch-role"
+  }]
+}
+```
+
+Set the following trust policy on `target-cloudwatch-role` in Account B to trust the adapter role. Cross-account access requires both the caller's permission to assume the role and the target role's trust. See the [AWS cross-account guidance](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_update-role-trust-policy.html).
 
 ```json
 {

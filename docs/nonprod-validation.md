@@ -1,6 +1,6 @@
 # Non-production manifest validation
 
-These instructions were added for this fork's stable-API migration. Use a non-production cluster context and the published test image:
+Use a non-production cluster context. Raw manifests and Helm default to GHCR `latest` with `Always` pulls. For repeatable validation, select a commit tag and record it. The previously tested baseline is:
 
 ```text
 ghcr.io/akhil850/k8s-cloudwatch-adapter:b9570c5ee2f42043ffca4344058c29730bf24a69
@@ -8,7 +8,7 @@ ghcr.io/akhil850/k8s-cloudwatch-adapter:b9570c5ee2f42043ffca4344058c29730bf24a69
 
 ## Choose one installation method
 
-The raw manifests are split by purpose: `deploy/crd.yaml` defines only the ExternalMetric CRD, and `deploy/adapter.yaml` installs the adapter and all its RBAC into `custom-metrics`. Alternatively, use the two Helm charts together, also in `custom-metrics`. Do not install both methods into the same cluster. The redundant `deploy/eks.yaml` has been removed.
+The raw manifests are split by purpose: `deploy/crd.yaml` defines only the ExternalMetric CRD, and `deploy/adapter.yaml` installs the adapter and all its RBAC into `custom-metrics`. Alternatively, use the two Helm charts together, also in `custom-metrics`. Do not install both methods into the same cluster.
 
 The adapter namespace is pinned in the manifests and charts. Helm requires `--namespace custom-metrics`; for another namespace, clone the repository and update the adapter namespace references and chart namespace checks. Keep the authentication RoleBinding and HPA service-account references in `kube-system`. Cluster-scoped resources, including the CRD and APIService, have no metadata namespace.
 
@@ -28,7 +28,7 @@ The CRD remains `metrics.aws/v1alpha1`; the external metrics API remains `extern
 
 Retain the existing service-account IAM role annotation and AWS environment configuration that your adapter needs. The role needs `cloudwatch:GetMetricData` and any permissions required by your cross-account configuration. Configure a registry pull secret if the GHCR package is private.
 
-For Helm, use `serviceAccount.irsaIamRole`, `imagePullSecrets`, and your existing values overrides. The CRD chart and adapter chart must target the same namespace and service-account name. The adapter manifest and chart defaults pin the test image above; no new binary is required for this manifest-only migration.
+For Helm, use `serviceAccount.irsaIamRole`, `imagePullSecrets`, and your existing values overrides. Both charts default to service account `k8s-cloudwatch-adapter`, regardless of release name. For another account, set `serviceAccount.name` identically in both charts; use `serviceAccount.create=false` in the adapter chart for an existing account. Existing releases with generated account names should explicitly retain those names in both charts before upgrading. Override `image.tag` in Helm or edit the raw Deployment to use the selected test image. Updating `latest` requires an explicit publishing run and does not restart existing pods.
 
 ## Apply the raw manifests
 
@@ -50,14 +50,16 @@ Perform the adapter dry run after adding your IAM and registry settings. Applyin
 
 ```bash
 helm upgrade --install k8s-cloudwatch-adapter-crd ./charts/k8s-cloudwatch-adapter-crd --namespace custom-metrics --create-namespace
-helm upgrade --install k8s-cloudwatch-adapter ./charts/k8s-cloudwatch-adapter --namespace custom-metrics --values <your-cluster-values.yaml>
+helm upgrade --install k8s-cloudwatch-adapter ./charts/k8s-cloudwatch-adapter --namespace custom-metrics --values <your-cluster-values.yaml> --set-string image.tag=<selected-commit-tag>
 ```
+
+The CRD chart uses `helm.sh/resource-policy: keep` to retain the CRD and its metric definitions on uninstall. A retained CRD requires explicit ownership handling before another release can manage it.
 
 Helm does not automatically adopt resources previously installed with `kubectl`; resolve resource ownership before switching installation methods.
 
 ## Runtime checks
 
-- Run the adapter on an `amd64` node and an `arm64` node in turn, using the same image tag and the Deployment's `kubernetes.io/arch` node selector. Confirm startup and metric retrieval on each.
+- Run the adapter on an `amd64` node and an `arm64` node in turn, using the same image tag and a Deployment node selector. For Helm, put `nodeSelector: {kubernetes.io/arch: amd64}` (or `arm64`) in your values file. Confirm startup and metric retrieval on each.
 - Query an existing ExternalMetric by its namespace and resource name through `/apis/external.metrics.k8s.io/v1beta1/<namespace>/<metric-name>` and compare its value with CloudWatch.
 - Confirm that the HPA reads a normal measurement and a genuine zero correctly.
 - In an isolated test setup, simulate a failed CloudWatch query and missing datapoints. Expect an API error and an unknown HPA metric, not a successful zero value.

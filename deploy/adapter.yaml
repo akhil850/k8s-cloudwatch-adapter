@@ -54,9 +54,9 @@ spec:
         fsGroup: 65534
       containers:
         - name: k8s-cloudwatch-adapter
-          image: ghcr.io/akhil850/k8s-cloudwatch-adapter:b9570c5ee2f42043ffca4344058c29730bf24a69
+          image: ghcr.io/akhil850/k8s-cloudwatch-adapter:latest
+          imagePullPolicy: Always
           args:
-            - /adapter
             - --cert-dir=/tmp
             - --secure-port=6443
             - --logtostderr=true

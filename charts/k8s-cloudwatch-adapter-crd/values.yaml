@@ -1,6 +1,6 @@
 serviceAccount:
-  # defaults to k8s-cloudwatch-adapter
-  name:
+  # Must match the adapter chart serviceAccount.name.
+  name: k8s-cloudwatch-adapter
 
 ## Labels to be added to the adapter Deployment
 ##

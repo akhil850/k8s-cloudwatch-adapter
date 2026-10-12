@@ -2,7 +2,7 @@
 FROM --platform=$BUILDPLATFORM golang:1.27.2-alpine AS builder
 RUN apk add -U --no-cache ca-certificates
 RUN mkdir /runtime-tmp && chmod 1777 /runtime-tmp
-WORKDIR /go/src/github.com/awslabs/k8s-cloudwatch-adapter
+WORKDIR /src
 
 # Copy all source files
 COPY . ./

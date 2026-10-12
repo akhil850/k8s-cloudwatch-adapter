@@ -27,6 +27,10 @@ spec:
         {{- toYaml .Values.podLabels | nindent 8 }}
       {{- end }}
     spec:
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       serviceAccountName: {{ template "k8s-cloudwatch-adapter.serviceAccountName" . }}
       securityContext:
         fsGroup: 65534
@@ -41,12 +45,11 @@ spec:
         image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
         imagePullPolicy: "{{ .Values.image.pullPolicy }}"
         args:
-        - /adapter
         {{- range $key, $val := .Values.args }}
         - --{{ $key }}={{ $val }}
         {{- end }}
         ports:
-        - containerPort: 6443
+        - containerPort: {{ index .Values.args "secure-port" }}
           name: https
         - containerPort: 8080
           name: http

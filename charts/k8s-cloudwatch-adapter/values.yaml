@@ -1,8 +1,8 @@
-# Modified for this fork: pin the published multi-architecture test image.
+# Modified for this fork: GHCR defaults; users can override the image tag.
 image:
-  pullPolicy: IfNotPresent
+  pullPolicy: Always
   repository: ghcr.io/akhil850/k8s-cloudwatch-adapter
-  tag: "b9570c5ee2f42043ffca4344058c29730bf24a69"
+  tag: "latest"
 
 ## Optional array of imagePullSecrets containing private registry credentials
 ## Ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
@@ -11,7 +11,7 @@ imagePullSecrets: []
 
 serviceAccount:
   create: true
-  name:
+  name: k8s-cloudwatch-adapter
   irsaIamRole: "" # e.g. "arn:aws:iam::012345678901:role/role-name"
 
 ## Runtime arguments
@@ -22,6 +22,9 @@ args:
   v: 2
 
 replicaCount: 1
+
+# Optional architecture placement for validation.
+nodeSelector: {}
 
 ## Labels to be added to the adapter Deployment
 ##
