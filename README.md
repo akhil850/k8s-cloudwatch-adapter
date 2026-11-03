@@ -60,12 +60,12 @@ The CRD chart retains its CRD on uninstall to preserve metric definitions. Delet
 
 ### Image selection
 
-Raw manifests and Helm default to `ghcr.io/akhil850/k8s-cloudwatch-adapter:latest`, the most recently promoted stable release, with `imagePullPolicy: Always`. Staging candidates use a commit tag; production deployments should pin the validated digest. To select a commit or version, edit the raw Deployment reference or set `image.tag` in Helm:
+Raw manifests and Helm default to `ghcr.io/akhil850/k8s-cloudwatch-adapter:latest`, the current successful master build, with `imagePullPolicy: Always`. Use a short commit tag for a specific build, or pin the tested digest in your Deployment. To select a commit, edit the raw Deployment reference or set `image.tag` in Helm:
 
 ```bash
 helm upgrade --install k8s-cloudwatch-adapter ./charts/k8s-cloudwatch-adapter \
   --namespace custom-metrics --values <your-cluster-values.yaml> \
-  --set-string image.tag=<full-commit-sha-or-version>
+  --set-string image.tag=<short-commit-sha>
 ```
 
 Updating a registry tag does not restart existing pods; use a rollout restart or a changed image reference to deploy another build.
@@ -97,12 +97,12 @@ Upgrade Kubernetes client libraries, the metrics API server, and generated clien
 
 Images at `ghcr.io/akhil850/k8s-cloudwatch-adapter` support **`linux/amd64` and `linux/arm64`**.
 
-- Merges to `master` publish full/seven-character commit tags and `master`. The build summary records the digest to test in EKS; existing commit images are reused.
-- Releases: run [Promote validated image](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/workflows/promote-image.yml) from `master` with the build run ID, tested digest, and version. Stable versions update `latest` without rebuilding; prereleases leave it unchanged.
-- For branch images, run [Docker build and publish](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/workflows/docker-publish.yml) manually, select the branch, and set `publish=true`.
-- Local build: `make docker TAG=<tag>`. Build and publish both architectures: `make docker-multiarch TAG=<tag>`.
+- `latest`: updated automatically by the current successful master build, using the same image digest; no extra build or promotion.
+- `<short-sha>`: the seven-character commit tag for a specific build. Existing commit images are verified and reused.
+- Branch images: run [Docker build and publish](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/workflows/docker-publish.yml) manually with `publish=true`. These publish only the short SHA and leave `latest` unchanged.
+- Local build: `make docker`. Build and publish both architectures: `make docker-multiarch`. Both default to the short commit tag.
 
-Documentation-only changes keep the `CI` result and skip Go tests/image builds. See the [release guide](docs/releases.md) for promotion checks and tag behavior.
+Documentation-only changes keep the `CI` result and skip Go tests/image builds. See the [image build guide](docs/releases.md) for details.
 
 Private GHCR packages require an `imagePullSecret` with package read access.
 
