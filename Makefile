@@ -5,8 +5,8 @@ ARCH?=amd64
 PLATFORMS=linux/arm64/v8,linux/amd64
 OUT_DIR?=./_output
 VENDOR_DOCKERIZED?=0
-GIT_HASH?=$(shell git rev-parse --short HEAD)
-TAG?=latest
+GIT_HASH?=$(shell git rev-parse --short=7 HEAD)
+TAG?=$(GIT_HASH)
 GOIMAGE=golang:1.27.2
 GOFLAGS=-mod=readonly -tags=netgo
 SRC:=$(shell find pkg cmd -type f -name "*.go")

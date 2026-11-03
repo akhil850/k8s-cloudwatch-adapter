@@ -62,7 +62,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    # Serialize tag writers, including the promotion workflow. Never cancel a push midway.
+    # Serialize tag writers. Never cancel a publication midway.
     concurrency:
       group: ${{ github.event_name == 'pull_request' && format('image-pr-{0}', github.event.pull_request.number) || 'image-publication' }}
       cancel-in-progress: false
@@ -92,13 +92,13 @@ jobs:
           file: Dockerfile
           platforms: linux/amd64,linux/arm64
           push: ${{ env.PUBLISH == 'true' }}
-          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          tags: ${{ env.IMAGE_NAME }}:${{ steps.candidate.outputs.tag }}
           cache-from: type=gha,scope=adapter
           cache-to: type=gha,scope=adapter,mode=max
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-      - name: Record candidate digest and update eligible tags
+      - name: Record image digest and update latest when eligible
         if: env.PUBLISH == 'true'
         env:
           IMAGE_DIGEST: ${{ steps.candidate.outputs.digest || steps.build.outputs.digest }}

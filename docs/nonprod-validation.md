@@ -28,7 +28,7 @@ The CRD remains `metrics.aws/v1alpha1`; the external metrics API remains `extern
 
 Retain the existing service-account IAM role annotation and AWS environment configuration that your adapter needs. The role needs `cloudwatch:GetMetricData` and any permissions required by your cross-account configuration. Configure a registry pull secret if the GHCR package is private.
 
-For Helm, use `serviceAccount.irsaIamRole`, `imagePullSecrets`, and your existing values overrides. Both charts default to service account `k8s-cloudwatch-adapter`, regardless of release name. For another account, set `serviceAccount.name` identically in both charts; use `serviceAccount.create=false` in the adapter chart for an existing account. Existing releases with generated account names should explicitly retain those names in both charts before upgrading. Override `image.tag` in Helm or edit the raw Deployment to use the selected test image. Updating `latest` requires an explicit publishing run and does not restart existing pods.
+For Helm, use `serviceAccount.irsaIamRole`, `imagePullSecrets`, and your existing values overrides. Both charts default to service account `k8s-cloudwatch-adapter`, regardless of release name. For another account, set `serviceAccount.name` identically in both charts; use `serviceAccount.create=false` in the adapter chart for an existing account. Existing releases with generated account names should explicitly retain those names in both charts before upgrading. Override `image.tag` in Helm or edit the raw Deployment to use the selected test image. Current successful master builds update `latest` automatically; this does not restart existing pods.
 
 ## Apply the raw manifests
 

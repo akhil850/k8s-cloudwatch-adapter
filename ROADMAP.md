@@ -40,16 +40,16 @@ Use the [non-production validation guide](docs/nonprod-validation.md). These che
 - [ ] Exercise missing data, query failures, and recovery in an isolated EKS test.
 - [ ] Validate cross-account role assumption and runtime placement on both architectures where used.
 - [ ] Recheck the consolidated raw manifests and Helm installation paths, including custom service-account settings.
-- [ ] Select a validated image for `latest` and record its digest.
+- [ ] Record the production rollout image digest and outcome.
 
-## Image build and promotion
+## Image publishing
 
-- [x] Separate candidate builds from manual release promotion; stable releases move `latest` without rebuilding.
-- [x] Record candidate digests, reuse existing commit images, and reject SHA/version tag overwrites.
+- [x] Publish only seven-character SHA tags and `latest`; current successful master builds update `latest` automatically without an extra build.
+- [x] Record image digests, reuse existing commit images, and reject short-SHA collisions or overwrites.
 - [x] Skip expensive jobs for documentation-only changes while retaining an always-running `CI` result.
-- [x] Serialize publishing jobs and check the current `master` revision before moving its image tag.
-- [x] Add publication-policy tests and validate both workflows with `actionlint`.
-- [ ] Validate the new build and promotion workflows in GitHub Actions, then promote an EKS-tested digest. See [docs/releases.md](docs/releases.md).
+- [x] Serialize publishing jobs and check the current `master` revision before moving `latest`; branch and stale builds cannot change it.
+- [x] Remove manual version promotion, and validate the two-tag policy with regression tests and `actionlint`.
+- [ ] Validate the simplified tagging in GitHub Actions. See [docs/releases.md](docs/releases.md).
 
 ## Later
 
