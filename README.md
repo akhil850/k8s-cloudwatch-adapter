@@ -124,7 +124,7 @@ See the [maintenance roadmap](ROADMAP.md) for prioritized reliability fixes, reg
 Our immediate next steps involve:
 
 - Migrating Kubernetes client libraries and the metrics API server together.
-- Migrating the AWS SDK for Go from v1 to v2.
+- Completing deployment acceptance checks for the AWS SDK v2 migration; implementation, regression tests, Linux CI race tests, and normal non-production EKS metric delivery are complete.
 - Further code refactoring and bug fixes as identified.
 
 ## More docs
