@@ -59,7 +59,10 @@ func (mc *MetricCache) Remove(key string) {
 
 // ListMetricNames retrieves a list of metric names from the cache.
 func (mc *MetricCache) ListMetricNames() []string {
-	keys := make([]string, len(mc.metricNames))
+	mc.metricMutex.RLock()
+	defer mc.metricMutex.RUnlock()
+
+	keys := make([]string, 0, len(mc.metricNames))
 	for k := range mc.metricNames {
 		keys = append(keys, mc.metricNames[k])
 	}

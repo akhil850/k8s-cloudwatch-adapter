@@ -125,14 +125,33 @@ func (c *Controller) processNextItem() bool {
 }
 
 func (c *Controller) enqueueExternalMetric(obj interface{}) {
-	var key string
-	var err error
-	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
-		runtime.HandleError(err)
+	if tombstone, ok := obj.(*cache.DeletedFinalStateUnknown); ok {
+		if tombstone == nil {
+			runtime.HandleError(fmt.Errorf("received a nil deletion tombstone"))
+			return
+		}
+		obj = *tombstone
+	}
+	metricObj := obj
+	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		metricObj = tombstone.Obj
+	}
+	if metric, ok := metricObj.(*v1alpha1.ExternalMetric); !ok || metric == nil {
+		runtime.HandleError(fmt.Errorf("expected ExternalMetric event, got %T", metricObj))
 		return
 	}
 
-	kind := getKind(obj)
+	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
+	if err != nil {
+		runtime.HandleError(err)
+		return
+	}
+	if _, name, err := cache.SplitMetaNamespaceKey(key); err != nil || name == "" {
+		runtime.HandleError(fmt.Errorf("invalid ExternalMetric event key %q", key))
+		return
+	}
+
+	kind := getKind(metricObj)
 
 	klog.V(2).Infof("adding item to queue for '%s' with kind '%s'", key, kind)
 	c.metricQueue.AddRateLimited(namespacedQueueItem{

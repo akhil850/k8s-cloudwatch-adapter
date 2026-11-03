@@ -2,6 +2,8 @@ package provider
 
 import (
 	"fmt"
+	"strconv"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/kubernetes-incubator/custom-metrics-apiserver/pkg/provider"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -34,21 +36,19 @@ func (p *cloudwatchProvider) GetExternalMetric(namespace string, metricSelector 
 		return nil, errors.NewBadRequest(err.Error())
 	}
 
-	// [SAFETY CHECK]
-	// If CloudWatch returns empty data, we return an error instead of 0.
-	// This forces the HPA to "freeze" (pause scaling) rather than scaling down dangerously.
-	if len(metricValue) == 0 || len(metricValue[0].Values) == 0 {
-		klog.Warningf("CloudWatch returned no data for metric %s. Returning error to freeze HPA.", info.Metric)
+	// Missing data must not become a successful zero measurement.
+	if len(metricValue) == 0 || metricValue[0] == nil || len(metricValue[0].Values) == 0 || metricValue[0].Values[0] == nil {
+		klog.Warningf("CloudWatch returned no data for metric %s. Returning a metric error.", info.Metric)
 		return nil, fmt.Errorf("no data points found for metric %s", info.Metric)
 	}
 
-	// Data exists, so we proceed safely.
-	// We extract the value here to use it for both the HPA and the logs.
 	rawValue := aws.Float64Value(metricValue[0].Values[0])
-	quantity := *resource.NewQuantity(int64(rawValue), resource.DecimalSI)
+	// Preserve decimals using Kubernetes quantity precision instead of truncating to an integer.
+	quantity, err := resource.ParseQuantity(strconv.FormatFloat(rawValue, 'f', -1, 64))
+	if err != nil {
+		return nil, fmt.Errorf("invalid CloudWatch value for metric %s: %w", info.Metric, err)
+	}
 
-	// [SUCCESS LOG]
-	// This prints the exact value the HPA will receive, making debugging much easier.
 	klog.Infof("Successfully fetched CloudWatch metric: %s (Namespace: %s). Value: %s", info.Metric, namespace, quantity.String())
 
 	externalMetricValue := external_metrics.ExternalMetricValue{

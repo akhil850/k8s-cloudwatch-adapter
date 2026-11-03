@@ -129,7 +129,7 @@ Our immediate next steps involve:
 
 ### Development images
 
-The GitHub Actions workflow publishes images to `ghcr.io/akhil850/k8s-cloudwatch-adapter` on pushes to `master`. Each image is tagged with the full commit SHA; version-tag pushes also publish the version tag. Pull requests build without publishing. Manual runs can optionally publish and update `latest`.
+The GitHub Actions workflow runs package tests with the race detector before building and publishes images to `ghcr.io/akhil850/k8s-cloudwatch-adapter` on pushes to `master` and `reliability-fixes`. Each image is tagged with the full commit SHA; version-tag pushes also publish the version tag. Pull requests build without publishing. Manual runs can optionally publish and update `latest`. Intermediate commits that do not need an image use `[skip ci]`; the final reliability commit builds the combined candidate when pushed.
 
 Each tag contains both `linux/amd64` and `linux/arm64` images for mixed EKS fleets. The Dockerfile uses Go 1.27.2 to cross-compile for each target, runs the package tests before compilation, and packages the static binary with CA certificates and license notices in a minimal runtime image. Library modernization is tracked in [ROADMAP.md](ROADMAP.md); these build changes alone do not establish Kubernetes 1.36/1.37 runtime compatibility.
 

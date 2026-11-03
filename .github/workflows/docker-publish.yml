@@ -2,7 +2,7 @@ name: Docker build and publish
 
 on:
   push:
-    branches: [master]
+    branches: [master, reliability-fixes]
     tags: ['v*.*.*']
   pull_request:
     branches: [master]
@@ -24,7 +24,22 @@ env:
   IMAGE_NAME: ghcr.io/akhil850/k8s-cloudwatch-adapter
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+      - name: Run package tests and race detector
+        run: go test -race ./pkg/...
   build:
+    needs: test
     permissions:
       contents: read
       packages: write
