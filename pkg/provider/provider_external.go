@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/kubernetes-incubator/custom-metrics-apiserver/pkg/provider"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -40,8 +41,15 @@ func (p *cloudwatchProvider) GetExternalMetric(namespace string, metricSelector 
 		klog.Warningf("CloudWatch returned no data for metric %s. Returning a metric error.", info.Metric)
 		return nil, fmt.Errorf("no data points found for metric %s", info.Metric)
 	}
+	result := metricValue[0]
+	if result.StatusCode != types.StatusCodeComplete {
+		return nil, fmt.Errorf("CloudWatch result for metric %s is not complete: %s", info.Metric, result.StatusCode)
+	}
+	if len(result.Timestamps) != len(result.Values) || result.Timestamps[0].IsZero() {
+		return nil, fmt.Errorf("missing or invalid CloudWatch timestamps for metric %s", info.Metric)
+	}
 
-	rawValue := metricValue[0].Values[0]
+	rawValue := result.Values[0]
 	// Preserve decimals using Kubernetes quantity precision instead of truncating to an integer.
 	quantity, err := resource.ParseQuantity(strconv.FormatFloat(float64(rawValue), 'f', -1, 64))
 	if err != nil {
@@ -53,7 +61,7 @@ func (p *cloudwatchProvider) GetExternalMetric(namespace string, metricSelector 
 	externalMetricValue := external_metrics.ExternalMetricValue{
 		MetricName: info.Metric,
 		Value:      quantity,
-		Timestamp:  metav1.Now(),
+		Timestamp:  metav1.NewTime(result.Timestamps[0]),
 	}
 
 	matchingMetrics := []external_metrics.ExternalMetricValue{externalMetricValue}

@@ -2,7 +2,9 @@ package aws
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -16,25 +18,29 @@ import (
 )
 
 func NewCloudWatchManager() CloudWatchManager {
-	return &cloudwatchManager{
-		localRegion: GetLocalRegion(),
-	}
+	return &cloudwatchManager{}
 }
 
 type cloudwatchManager struct {
+	regionMutex sync.Mutex
 	localRegion string
 }
 
-func (c *cloudwatchManager) getClient(role *string, region *string) *cloudwatch.Client {
-	// Resolve region: explicit spec field → environment variable → IMDS fallback.
-	resolvedRegion := c.localRegion
-	if region != nil && *region != "" {
-		resolvedRegion = *region
+func (c *cloudwatchManager) getLocalRegion() string {
+	c.regionMutex.Lock()
+	defer c.regionMutex.Unlock()
+	// Cache successful metadata lookups; allow transient failures to recover.
+	if c.localRegion == "" {
+		c.localRegion = GetLocalRegion()
 	}
-	klog.Infof("using AWS Region: %s", resolvedRegion)
+	return c.localRegion
+}
 
-	loadOpts := []func(*config.LoadOptions) error{
-		config.WithRegion(resolvedRegion),
+func (c *cloudwatchManager) getClient(role *string, region *string) (*cloudwatch.Client, error) {
+	// Let the SDK resolve environment and shared-config regions before using IMDS.
+	var loadOpts []func(*config.LoadOptions) error
+	if region != nil && *region != "" {
+		loadOpts = append(loadOpts, config.WithRegion(*region))
 	}
 
 	if os.Getenv("DEBUG") == "true" {
@@ -43,8 +49,15 @@ func (c *cloudwatchManager) getClient(role *string, region *string) *cloudwatch.
 
 	cfg, err := config.LoadDefaultConfig(context.Background(), loadOpts...)
 	if err != nil {
-		klog.Fatalf("unable to load AWS SDK config: %v", err)
+		return nil, fmt.Errorf("unable to load AWS SDK config: %w", err)
 	}
+	if cfg.Region == "" {
+		cfg.Region = c.getLocalRegion()
+	}
+	if cfg.Region == "" {
+		return nil, fmt.Errorf("unable to resolve AWS region: set spec.region, AWS_REGION, or AWS_DEFAULT_REGION")
+	}
+	klog.Infof("using AWS Region: %s", cfg.Region)
 
 	// Assume a cross-account role when one is specified.
 	if role != nil && *role != "" {
@@ -55,7 +68,7 @@ func (c *cloudwatchManager) getClient(role *string, region *string) *cloudwatch.
 		)
 	}
 
-	return cloudwatch.NewFromConfig(cfg)
+	return cloudwatch.NewFromConfig(cfg), nil
 }
 
 func (c *cloudwatchManager) QueryCloudWatch(request v1alpha1.ExternalMetric) ([]types.MetricDataResult, error) {
@@ -72,7 +85,11 @@ func (c *cloudwatchManager) QueryCloudWatch(request v1alpha1.ExternalMetric) ([]
 	cwQuery.StartTime = &startTime
 	cwQuery.ScanBy = types.ScanByTimestampDescending
 
-	resp, err := c.getClient(role, region).GetMetricData(context.Background(), &cwQuery)
+	client, err := c.getClient(role, region)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := client.GetMetricData(context.Background(), &cwQuery)
 	if err != nil {
 		klog.Errorf("CloudWatch GetMetricData error: %v", err)
 		return nil, err

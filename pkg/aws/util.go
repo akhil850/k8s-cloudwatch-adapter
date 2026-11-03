@@ -2,11 +2,10 @@ package aws
 
 import (
 	"context"
-	"io"
-	"net/http"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/awslabs/k8s-cloudwatch-adapter/pkg/apis/metrics/v1alpha1"
@@ -14,40 +13,18 @@ import (
 	"k8s.io/klog"
 )
 
-// GetLocalRegion gets the region ID from the EC2 instance metadata (IMDSv1 fallback).
-// Prefer setting the AWS_REGION / AWS_DEFAULT_REGION environment variable or the
-// region field on the ExternalMetric spec; this path is used only when neither is set.
+// GetLocalRegion retrieves the region from the EC2 identity document using the
+// SDK's IMDSv2-capable client. Call only when no configured region is available.
 func GetLocalRegion() string {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		"http://169.254.169.254/latest/meta-data/placement/availability-zone/", nil)
-	if err != nil {
-		klog.Errorf("unable to build instance metadata request: %v", err)
-		return ""
-	}
-
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := imds.New(imds.Options{}).GetRegion(ctx, &imds.GetRegionInput{})
 	if err != nil {
 		klog.Errorf("unable to get current region information: %v", err)
 		return ""
 	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		klog.Errorf("cannot read response from instance metadata: %v", err)
-		return ""
-	}
-
-	if len(body) == 0 {
-		klog.Errorf("empty response from instance metadata")
-		return ""
-	}
-
-	// strip the last character from AZ to get region ID (e.g. "us-east-1a" → "us-east-1")
-	return string(body[:len(body)-1])
+	return resp.Region
 }
 
 func toCloudWatchQuery(externalMetric *v1alpha1.ExternalMetric) cloudwatch.GetMetricDataInput {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/awslabs/k8s-cloudwatch-adapter/pkg/apis/metrics/v1alpha1"
@@ -23,7 +24,13 @@ func (s stubCloudWatch) QueryCloudWatch(v1alpha1.ExternalMetric) ([]types.Metric
 	return s.results, s.err
 }
 
-func float64Ptr(v float64) float64 { return v }
+func completeResult(value float64) types.MetricDataResult {
+	return types.MetricDataResult{
+		StatusCode: types.StatusCodeComplete,
+		Values:     []float64{value},
+		Timestamps: []time.Time{time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)},
+	}
+}
 
 func TestExternalMetricMissingDataAndZero(t *testing.T) {
 	zero := float64(0)
@@ -38,8 +45,8 @@ func TestExternalMetricMissingDataAndZero(t *testing.T) {
 		{name: "no results", wantError: true},
 		{name: "no datapoints", results: []types.MetricDataResult{{}}, wantError: true},
 		{name: "query failure", err: errors.New("CloudWatch unavailable"), wantError: true},
-		{name: "genuine zero", results: []types.MetricDataResult{{Values: []float64{zero}}}},
-		{name: "positive measurement", results: []types.MetricDataResult{{Values: []float64{fortytwo}}}, want: 42},
+		{name: "genuine zero", results: []types.MetricDataResult{completeResult(zero)}},
+		{name: "positive measurement", results: []types.MetricDataResult{completeResult(fortytwo)}, want: 42},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -84,7 +91,7 @@ func TestExternalMetricDecimalPrecision(t *testing.T) {
 			cache := metriccache.NewMetricCache()
 			cache.Update("ExternalMetric/default/test", "test", v1alpha1.ExternalMetric{})
 			p := &cloudwatchProvider{metricCache: cache, cwManager: stubCloudWatch{
-				results: []types.MetricDataResult{{Values: []float64{tt.value}}},
+				results: []types.MetricDataResult{completeResult(tt.value)},
 			}}
 			got, err := p.GetExternalMetric("default", labels.Everything(), apiprovider.ExternalMetricInfo{Metric: "test"})
 			if err != nil {
@@ -103,11 +110,67 @@ func TestExternalMetricRejectsNonFiniteValues(t *testing.T) {
 		cache := metriccache.NewMetricCache()
 		cache.Update("ExternalMetric/default/test", "test", v1alpha1.ExternalMetric{})
 		p := &cloudwatchProvider{metricCache: cache, cwManager: stubCloudWatch{
-			results: []types.MetricDataResult{{Values: []float64{value}}},
+			results: []types.MetricDataResult{completeResult(value)},
 		}}
 		got, err := p.GetExternalMetric("default", labels.Everything(), apiprovider.ExternalMetricInfo{Metric: "test"})
 		if err == nil || got != nil {
 			t.Fatalf("non-finite value %v must return an error, got %v, err %v", value, got, err)
 		}
+	}
+}
+
+func TestExternalMetricRejectsIncompleteResults(t *testing.T) {
+	for _, status := range []types.StatusCode{
+		types.StatusCodePartialData, types.StatusCodeInternalError, types.StatusCodeForbidden, "", "Unknown",
+	} {
+		t.Run(string(status), func(t *testing.T) {
+			result := completeResult(0)
+			result.StatusCode = status
+			cache := metriccache.NewMetricCache()
+			cache.Update("ExternalMetric/default/test", "test", v1alpha1.ExternalMetric{})
+			p := &cloudwatchProvider{metricCache: cache, cwManager: stubCloudWatch{results: []types.MetricDataResult{result}}}
+			got, err := p.GetExternalMetric("default", labels.Everything(), apiprovider.ExternalMetricInfo{Metric: "test"})
+			if err == nil || got != nil {
+				t.Fatalf("status %q must return an error and no measurement: got %v, err %v", status, got, err)
+			}
+		})
+	}
+}
+
+func TestExternalMetricTimestamps(t *testing.T) {
+	newest := time.Now().UTC().Add(-4 * time.Minute)
+	older := newest.Add(-time.Minute)
+	for _, tt := range []struct {
+		name       string
+		timestamps []time.Time
+		wantError  bool
+	}{
+		{name: "preserve selected timestamp", timestamps: []time.Time{newest, older}},
+		{name: "missing timestamps", wantError: true},
+		{name: "too few timestamps", timestamps: []time.Time{newest}, wantError: true},
+		{name: "too many timestamps", timestamps: []time.Time{newest, older, older}, wantError: true},
+		{name: "zero timestamp", timestamps: []time.Time{{}, older}, wantError: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			result := completeResult(42)
+			result.Values = []float64{42, 21}
+			result.Timestamps = tt.timestamps
+			cache := metriccache.NewMetricCache()
+			cache.Update("ExternalMetric/default/test", "test", v1alpha1.ExternalMetric{})
+			p := &cloudwatchProvider{metricCache: cache, cwManager: stubCloudWatch{results: []types.MetricDataResult{result}}}
+			got, err := p.GetExternalMetric("default", labels.Everything(), apiprovider.ExternalMetricInfo{Metric: "test"})
+			if tt.wantError {
+				if err == nil || got != nil {
+					t.Fatalf("invalid timestamps accepted: got %v, err %v", got, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Items) != 1 || !got.Items[0].Timestamp.Time.Equal(newest) || got.Items[0].Value.Value() != 42 {
+				t.Fatalf("got %v; want value 42 at source timestamp %v", got, newest)
+			}
+		})
 	}
 }

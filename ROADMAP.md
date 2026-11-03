@@ -37,7 +37,7 @@ Missing data must never be reported as a successful zero measurement. An error p
 
 1. [x] **Protect metric discovery from concurrent cache writes.** Listing now holds the cache read lock and starts with an empty slice, removing leading empty entries. Regression tests cover discovery updates/removals and concurrent list/get/update/remove operations; cache tests passed locally.
 2. [x] **Preserve fractional CloudWatch values.** Decimal quantity parsing replaces integer truncation, preserving values such as `0.9` at Kubernetes quantity precision. Provider tests passed for fractional, sub-milli, large, integer, and zero measurements. Missing/nil datapoints and non-finite values return errors.
-3. [ ] **Make region discovery reliable.** Prefer explicitly configured regions and environment variables (`AWS_REGION` / `AWS_DEFAULT_REGION`), bound IMDS timeouts, and handle metadata failures gracefully without panicking. Add targeted unit tests for configured-region operation without metadata access and metadata failure paths.
+3. [x] **Make region discovery reliable.** Resolve the spec region before environment and shared configuration, using IMDS only as a fallback. The SDK metadata client supports IMDSv2 and a two-second timeout. Successful metadata lookups are cached; failures can recover on a later request. Region/configuration failures return query errors. Regression tests cover precedence, configured-region operation without metadata access, invalid metadata, timeout, and recovery.
 4. [x] **Handle informer deletion tombstones.** Deletion-aware keys and tombstone unwrapping now queue deletions correctly. Regression tests passed for ordinary and tombstone deletions, invalid events, cache/discovery removal, and delayed deletions after recreation.
 5. [x] **Update remaining Kubernetes manifests.** Helm and standalone registrations use stable `v1` APIs and consistent permissive CRD schemas. The merged milestone pinned the published GHCR test image, which the maintainer reported testing successfully. The maintenance follow-up defaults to `latest` with an image-tag override. Final consolidation, namespace pinning, and chart follow-up changes still need a cluster recheck; see [the validation guide](docs/nonprod-validation.md).
 
@@ -49,7 +49,8 @@ Add focused tests alongside each fix rather than postponing coverage until the e
 - [x] Provider tests for fractional values, quantity precision, and invalid/nil measurements.
 - [x] Cache tests for concurrent access and metric-name listing.
 - [x] Controller tests for ordinary deletions, tombstones, malformed events, and metric recreation.
-- [ ] Region discovery tests for configured regions, env vars, and metadata failures.
+- [x] Region discovery tests for configured regions, env vars, and metadata failures.
+- [x] Provider regression tests rejecting incomplete result statuses and invalid timestamps, and preserving the selected datapoint's source timestamp.
 - [x] Run `go test ./pkg/...` including provider and AWS query tests; compile and verify Linux binaries for both architectures.
 - [x] Run `go test -race ./pkg/... -count=1` locally with Go 1.27.2 and GCC 15.2.0 on Windows/amd64. All package race tests passed on the reliability baseline.
 - [ ] Trigger CI race-test gate on Linux builder for combined commits.
@@ -77,7 +78,7 @@ The build baseline uses Go 1.27 and targets `linux/amd64` and `linux/arm64` thro
   - Configured client with `config.LoadDefaultConfig`, context-aware requests, STS assume-role provider, and explicit region precedence.
   - Replaced deprecated `ioutil.ReadAll` with `io.ReadAll` and added 2-second timeout context for EC2 instance metadata lookups.
   - Upgraded `go.mod` module directive to `go 1.24` and verified all `./pkg/...` tests pass.
-- [ ] Add dedicated unit tests for region resolution and IMDS timeout/failure fallback paths.
+- [x] Add dedicated unit tests for region resolution and IMDS timeout/failure fallback paths.
 - [ ] Migrate Kubernetes libraries and the metrics API server together, preserving provider regression behavior:
   - Migrate from `github.com/kubernetes-incubator/custom-metrics-apiserver` (historical 2020 incubator release) to modern `sigs.k8s.io/custom-metrics-apiserver`.
   - Upgrade `k8s.io/*` dependencies (`client-go`, `apimachinery`, `metrics`, `component-base`, `code-generator`) from `v0.17.7` to match modern Kubernetes releases.
