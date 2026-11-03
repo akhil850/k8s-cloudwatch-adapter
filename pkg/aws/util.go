@@ -1,77 +1,72 @@
 package aws
 
 import (
-	"io/ioutil"
-	"net/http"
+	"context"
+	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/cloudwatch"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/awslabs/k8s-cloudwatch-adapter/pkg/apis/metrics/v1alpha1"
 
 	"k8s.io/klog"
 )
 
-// GetLocalRegion gets the region ID from the instance metadata.
+// GetLocalRegion retrieves the region from the EC2 identity document using the
+// SDK's IMDSv2-capable client. Call only when no configured region is available.
 func GetLocalRegion() string {
-	resp, err := http.Get("http://169.254.169.254/latest/meta-data/placement/availability-zone/")
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	resp, err := imds.New(imds.Options{}).GetRegion(ctx, &imds.GetRegionInput{})
 	if err != nil {
-		klog.Errorf("unable to get current region information, %v", err)
+		klog.Errorf("unable to get current region information: %v", err)
 		return ""
 	}
-
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		klog.Errorf("cannot read response from instance metadata, %v", err)
-	}
-
-	// strip the last character from AZ to get region ID
-	return string(body[0 : len(body)-1])
+	return resp.Region
 }
 
 func toCloudWatchQuery(externalMetric *v1alpha1.ExternalMetric) cloudwatch.GetMetricDataInput {
 	queries := externalMetric.Spec.Queries
 
-	cwMetricQueries := make([]*cloudwatch.MetricDataQuery, len(queries))
+	cwMetricQueries := make([]types.MetricDataQuery, len(queries))
 	for i, q := range queries {
 		q := q
-		returnData := &q.ReturnData
-		mdq := &cloudwatch.MetricDataQuery{
-			Id:         &q.ID,
-			Label:      &q.Label,
-			ReturnData: *returnData,
+		mdq := types.MetricDataQuery{
+			Id:         aws.String(q.ID),
+			Label:      aws.String(q.Label),
+			ReturnData: q.ReturnData,
 		}
 
 		if len(q.Expression) == 0 {
-			dimensions := make([]*cloudwatch.Dimension, len(q.MetricStat.Metric.Dimensions))
+			dimensions := make([]types.Dimension, len(q.MetricStat.Metric.Dimensions))
 			for j := range q.MetricStat.Metric.Dimensions {
-				dimensions[j] = &cloudwatch.Dimension{
-					Name:  &q.MetricStat.Metric.Dimensions[j].Name,
-					Value: &q.MetricStat.Metric.Dimensions[j].Value,
+				dimensions[j] = types.Dimension{
+					Name:  aws.String(q.MetricStat.Metric.Dimensions[j].Name),
+					Value: aws.String(q.MetricStat.Metric.Dimensions[j].Value),
 				}
 			}
 
-			metric := &cloudwatch.Metric{
-				Dimensions: dimensions,
-				MetricName: &q.MetricStat.Metric.MetricName,
-				Namespace:  &q.MetricStat.Metric.Namespace,
-			}
-
-			mdq.MetricStat = &cloudwatch.MetricStat{
-				Metric: metric,
-				Period: &q.MetricStat.Period,
-				Stat:   &q.MetricStat.Stat,
-				Unit:   aws.String(q.MetricStat.Unit),
+			period := int32(q.MetricStat.Period)
+			mdq.MetricStat = &types.MetricStat{
+				Metric: &types.Metric{
+					Dimensions: dimensions,
+					MetricName: aws.String(q.MetricStat.Metric.MetricName),
+					Namespace:  aws.String(q.MetricStat.Metric.Namespace),
+				},
+				Period: aws.Int32(period),
+				Stat:   aws.String(q.MetricStat.Stat),
+				Unit:   types.StandardUnit(q.MetricStat.Unit),
 			}
 		} else {
-			mdq.Expression = &q.Expression
+			mdq.Expression = aws.String(q.Expression)
 		}
 
 		cwMetricQueries[i] = mdq
 	}
-	cwQuery := cloudwatch.GetMetricDataInput{
+
+	return cloudwatch.GetMetricDataInput{
 		MetricDataQueries: cwMetricQueries,
 	}
-
-	return cwQuery
 }

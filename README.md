@@ -115,6 +115,8 @@ A critical enhancement has been implemented in `pkg/provider/provider_external.g
 **Previous Behavior:** If CloudWatch returned no data for a requested metric, the adapter would report a value of `0` to the HPA, potentially causing an unintended scale-down of pods.
 **New Behavior:** The adapter returns an error when CloudWatch provides no data or a query fails. The HPA cannot use that unavailable measurement to recommend a scale-down; other healthy metrics may still permit scale-up. A genuine zero remains zero.
 
+The adapter also rejects incomplete CloudWatch results and measurements with missing or invalid timestamps. Successful responses preserve the timestamp of the selected CloudWatch datapoint instead of reporting the request time.
+
 ### Future Work
 
 See the [maintenance roadmap](ROADMAP.md) for prioritized reliability fixes, regression coverage, and release checks for this fork.
@@ -122,7 +124,7 @@ See the [maintenance roadmap](ROADMAP.md) for prioritized reliability fixes, reg
 Our immediate next steps involve:
 
 - Migrating Kubernetes client libraries and the metrics API server together.
-- Migrating the AWS SDK for Go from v1 to v2.
+- Completing deployment acceptance checks for the AWS SDK v2 migration; implementation, regression tests, Linux CI race tests, and normal non-production EKS metric delivery are complete.
 - Further code refactoring and bug fixes as identified.
 
 ## More docs

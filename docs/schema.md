@@ -18,7 +18,7 @@ Field|Type|Description
 ---|---|---
 name|string|Name of the series
 roleArn|string|(Optional) ARN of the IAM role to assume. If specified, the adapter will send requests to Amazon Cloudwatch using this IAM role. 
-region|string|(Optional) Target region to retrieve metrics from. The adapter will resolve the current region by default.
+region|string|(Optional) Target region to retrieve metrics from. Takes precedence over `AWS_REGION`, `AWS_DEFAULT_REGION`, and the AWS shared configuration. If none is configured, the adapter uses EC2 instance metadata with a two-second timeout. Set this field or an environment variable when metadata is unavailable.
 queries|[MetricDataQuery](#metricdataquery)[]|Specify the CloudWatch metric queries to retrieve data for this series.
 
 ## MetricDataQuery

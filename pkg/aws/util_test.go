@@ -5,7 +5,6 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"github.com/aws/aws-sdk-go/aws"
 	api "github.com/awslabs/k8s-cloudwatch-adapter/pkg/apis/metrics/v1alpha1"
 )
 
@@ -61,7 +60,7 @@ func TestToCloudWatchQuery(t *testing.T) {
 				t.Errorf("metricRequest Namespace = %v, want %v", *qMetric.Namespace, wantMetric.Namespace)
 			}
 
-			if *qStat.Period != wantStat.Period {
+			if *qStat.Period != int32(wantStat.Period) {
 				t.Errorf("metricRequest Period = %v, want %v", *qStat.Period, wantStat.Period)
 			}
 
@@ -69,13 +68,13 @@ func TestToCloudWatchQuery(t *testing.T) {
 				t.Errorf("metricRequest Stat = %v, want %v", *qStat.Stat, wantStat.Stat)
 			}
 
-			if aws.StringValue(qStat.Unit) != wantStat.Unit {
+			if string(qStat.Unit) != wantStat.Unit {
 				t.Errorf("metricRequest Unit = %v, want %v", qStat.Unit, wantStat.Unit)
 			}
 		}
 
 		if q.ReturnData != wantQueries.ReturnData {
-			t.Errorf("metricRequest ReturnData = %v, want %v", *q.ReturnData, wantQueries.ReturnData)
+			t.Errorf("metricRequest ReturnData = %v, want %v", q.ReturnData, wantQueries.ReturnData)
 		}
 	}
 }
