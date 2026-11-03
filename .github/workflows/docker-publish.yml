@@ -2,7 +2,7 @@ name: Docker build and publish
 
 on:
   push:
-    branches: [master, reliability-fixes]
+    branches: [master, aws-sdk-v2]
     tags: ['v*.*.*']
   pull_request:
     branches: [master]
@@ -64,9 +64,11 @@ jobs:
           PUBLISH: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
           UPDATE_LATEST: ${{ github.event_name == 'workflow_dispatch' && inputs.update_latest }}
         run: |
-          tags=(--tag "${IMAGE_NAME}:${GITHUB_SHA}")
+          SHORT_SHA="${GITHUB_SHA::7}"
+          tags=(--tag "${IMAGE_NAME}:${SHORT_SHA}" --tag "${IMAGE_NAME}:${GITHUB_SHA}")
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tags+=(--tag "${IMAGE_NAME}:${GITHUB_REF_NAME}")
+            tags+=(--tag "${IMAGE_NAME}:latest")
           fi
           if [[ "$PUBLISH" == true && "$UPDATE_LATEST" == true ]]; then
             tags+=(--tag "${IMAGE_NAME}:latest")
