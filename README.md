@@ -60,7 +60,7 @@ The CRD chart retains its CRD on uninstall to preserve metric definitions. Delet
 
 ### Image selection
 
-Raw manifests and Helm default to `ghcr.io/akhil850/k8s-cloudwatch-adapter:latest` with `imagePullPolicy: Always`. To pin an image, edit the raw Deployment reference or set `image.tag` in Helm:
+Raw manifests and Helm default to `ghcr.io/akhil850/k8s-cloudwatch-adapter:latest`, the most recently promoted stable release, with `imagePullPolicy: Always`. Staging candidates use a commit tag; production deployments should pin the validated digest. To select a commit or version, edit the raw Deployment reference or set `image.tag` in Helm:
 
 ```bash
 helm upgrade --install k8s-cloudwatch-adapter ./charts/k8s-cloudwatch-adapter \
@@ -97,10 +97,12 @@ Upgrade Kubernetes client libraries, the metrics API server, and generated clien
 
 Images at `ghcr.io/akhil850/k8s-cloudwatch-adapter` support **`linux/amd64` and `linux/arm64`**.
 
-- Tags: full and seven-character commit SHA, `master`, and release versions. Pin a full commit SHA or version for repeatable deployments.
-- `latest` updates on stable version-tag releases or a manual run with `update_latest=true`.
+- Merges to `master` publish full/seven-character commit tags and `master`. The build summary records the digest to test in EKS; existing commit images are reused.
+- Releases: run [Promote validated image](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/workflows/promote-image.yml) from `master` with the build run ID, tested digest, and version. Stable versions update `latest` without rebuilding; prereleases leave it unchanged.
 - For branch images, run [Docker build and publish](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/workflows/docker-publish.yml) manually, select the branch, and set `publish=true`.
 - Local build: `make docker TAG=<tag>`. Build and publish both architectures: `make docker-multiarch TAG=<tag>`.
+
+Documentation-only changes keep the `CI` result and skip Go tests/image builds. See the [release guide](docs/releases.md) for promotion checks and tag behavior.
 
 Private GHCR packages require an `imagePullSecret` with package read access.
 
