@@ -2,7 +2,7 @@ name: Docker build and publish
 
 on:
   push:
-    branches: [master, aws-sdk-v2]
+    branches: [master]
     tags: ['v*.*.*']
   pull_request:
     branches: [master]
