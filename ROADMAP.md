@@ -42,6 +42,15 @@ Use the [non-production validation guide](docs/nonprod-validation.md). These che
 - [ ] Recheck the consolidated raw manifests and Helm installation paths, including custom service-account settings.
 - [ ] Select a validated image for `latest` and record its digest.
 
+## Image build and promotion
+
+- [x] Separate candidate builds from manual release promotion; stable releases move `latest` without rebuilding.
+- [x] Record candidate digests, reuse existing commit images, and reject SHA/version tag overwrites.
+- [x] Skip expensive jobs for documentation-only changes while retaining an always-running `CI` result.
+- [x] Serialize publishing jobs and check the current `master` revision before moving its image tag.
+- [x] Add publication-policy tests and validate both workflows with `actionlint`.
+- [ ] Validate the new build and promotion workflows in GitHub Actions, then promote an EKS-tested digest. See [docs/releases.md](docs/releases.md).
+
 ## Later
 
 - [ ] Rename the historical `github.com/awslabs/k8s-cloudwatch-adapter` module path to this fork, separately from the Kubernetes upgrade. Preserve the API group and attribution notices.

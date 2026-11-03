@@ -3,114 +3,132 @@ name: Docker build and publish
 on:
   push:
     branches: [master]
-    tags: ['v*.*.*']
   pull_request:
     branches: [master]
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish image to GitHub Container Registry'
+        description: Publish a candidate image to GHCR
         type: boolean
         default: true
-      update_latest:
-        description: 'Also update :latest tag'
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 env:
   IMAGE_NAME: ghcr.io/akhil850/k8s-cloudwatch-adapter
+  PYTHONDONTWRITEBYTECODE: '1'
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Test image publication policy
+        run: python3 -m unittest discover -s hack/tests -v
+      - name: Detect build-relevant changes
+        id: filter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 hack/ci_images.py changes
+
   test:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
-      - name: Set up Go
-        uses: actions/setup-go@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: '1.27.2'
       - name: Run package tests and race detector
-        run: go test -race ./pkg/...
+        run: go test -race ./pkg/... ./cmd/...
 
   build:
-    needs: test
+    needs: [changes, test]
+    if: needs.changes.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
     permissions:
       contents: read
       packages: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Serialize tag writers, including the promotion workflow. Never cancel a push midway.
+    concurrency:
+      group: ${{ github.event_name == 'pull_request' && format('image-pr-{0}', github.event.pull_request.number) || 'image-publication' }}
+      cancel-in-progress: false
+    env:
+      PUBLISH: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
+      GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           persist-credentials: false
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
-
-      - name: Determine publish mode
-        id: prep
-        run: |
-          PUBLISH="false"
-          if [[ "${{ github.event_name }}" == "push" ]]; then
-            PUBLISH="true"
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.publish }}" == "true" ]]; then
-            PUBLISH="true"
-          fi
-          echo "publish=${PUBLISH}" >> $GITHUB_OUTPUT
-
-      - name: Log into GitHub Container Registry
-        if: steps.prep.outputs.publish == 'true'
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - name: Log into GHCR
+        if: env.PUBLISH == 'true'
         env:
           REGISTRY_USERNAME: ${{ github.actor }}
-          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USERNAME" --password-stdin
-
-      - name: Build and optionally publish multi-arch images
+          REGISTRY_TOKEN: ${{ github.token }}
+        run: printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USERNAME" --password-stdin
+      - name: Reuse an existing commit image
+        id: candidate
+        run: python3 hack/ci_images.py prepare
+      - name: Build multi-architecture image
+        id: build
+        if: steps.candidate.outputs.reuse != 'true'
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.PUBLISH == 'true' }}
+          tags: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cache-from: type=gha,scope=adapter
+          cache-to: type=gha,scope=adapter,mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Record candidate digest and update eligible tags
+        if: env.PUBLISH == 'true'
         env:
-          PUBLISH: ${{ steps.prep.outputs.publish }}
-          UPDATE_LATEST: ${{ github.event_name == 'workflow_dispatch' && inputs.update_latest }}
-        run: |
-          SHORT_SHA="${GITHUB_SHA::7}"
-          tags=(--tag "${IMAGE_NAME}:${SHORT_SHA}" --tag "${IMAGE_NAME}:${GITHUB_SHA}")
-
-          # If pushed to master, also tag :master
-          if [[ "$GITHUB_REF" == "refs/heads/master" ]]; then
-            tags+=(--tag "${IMAGE_NAME}:master")
-          fi
-
-          # If release tag (e.g. v0.1.0 or v0.1.0-rc1)
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            tags+=(--tag "${IMAGE_NAME}:${GITHUB_REF_NAME}")
-            # If not a pre-release (doesn't contain a hyphen like -rc), update :latest
-            if [[ "$GITHUB_REF_NAME" != *-* ]]; then
-              tags+=(--tag "${IMAGE_NAME}:latest")
-            fi
-          fi
-
-          # Manual dispatch override to force update latest
-          if [[ "$PUBLISH" == "true" && "$UPDATE_LATEST" == "true" ]]; then
-            tags+=(--tag "${IMAGE_NAME}:latest")
-          fi
-
-          output=(--output type=cacheonly)
-          if [[ "$PUBLISH" == "true" ]]; then
-            output=(--push)
-          fi
-
-          docker buildx build --platform linux/amd64,linux/arm64 \
-            --file Dockerfile "${tags[@]}" "${output[@]}" \
-            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
-            --label "org.opencontainers.image.revision=${GITHUB_SHA}" .
-
-      - name: Log out of GitHub Container Registry
-        if: always() && steps.prep.outputs.publish == 'true'
+          IMAGE_DIGEST: ${{ steps.candidate.outputs.digest || steps.build.outputs.digest }}
+        run: python3 hack/ci_images.py record
+      - name: Save candidate metadata
+        if: env.PUBLISH == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: image-metadata
+          path: image-metadata.json
+          if-no-files-found: error
+      - name: Log out of GHCR
+        if: always() && env.PUBLISH == 'true'
         run: docker logout ghcr.io
+
+  ci:
+    name: CI
+    if: always()
+    needs: [changes, test, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check required jobs
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RELEVANT: ${{ needs.changes.outputs.relevant }}
+          TEST: ${{ needs.test.result }}
+          BUILD: ${{ needs.build.result }}
+        run: |
+          test "$CHANGES" = success
+          if [ "$RELEVANT" = true ]; then
+            test "$TEST" = success
+            test "$BUILD" = success
+          fi
