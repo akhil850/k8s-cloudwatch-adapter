@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/kubernetes-incubator/custom-metrics-apiserver/pkg/provider"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -37,14 +36,14 @@ func (p *cloudwatchProvider) GetExternalMetric(namespace string, metricSelector 
 	}
 
 	// Missing data must not become a successful zero measurement.
-	if len(metricValue) == 0 || metricValue[0] == nil || len(metricValue[0].Values) == 0 || metricValue[0].Values[0] == nil {
+	if len(metricValue) == 0 || metricValue[0].Values == nil || len(metricValue[0].Values) == 0 {
 		klog.Warningf("CloudWatch returned no data for metric %s. Returning a metric error.", info.Metric)
 		return nil, fmt.Errorf("no data points found for metric %s", info.Metric)
 	}
 
-	rawValue := aws.Float64Value(metricValue[0].Values[0])
+	rawValue := metricValue[0].Values[0]
 	// Preserve decimals using Kubernetes quantity precision instead of truncating to an integer.
-	quantity, err := resource.ParseQuantity(strconv.FormatFloat(rawValue, 'f', -1, 64))
+	quantity, err := resource.ParseQuantity(strconv.FormatFloat(float64(rawValue), 'f', -1, 64))
 	if err != nil {
 		return nil, fmt.Errorf("invalid CloudWatch value for metric %s: %w", info.Metric, err)
 	}

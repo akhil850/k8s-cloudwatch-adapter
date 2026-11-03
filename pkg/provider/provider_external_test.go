@@ -6,8 +6,7 @@ import (
 	"math"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/cloudwatch"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
 	"github.com/awslabs/k8s-cloudwatch-adapter/pkg/apis/metrics/v1alpha1"
 	"github.com/awslabs/k8s-cloudwatch-adapter/pkg/metriccache"
 	apiprovider "github.com/kubernetes-incubator/custom-metrics-apiserver/pkg/provider"
@@ -16,29 +15,31 @@ import (
 )
 
 type stubCloudWatch struct {
-	results []*cloudwatch.MetricDataResult
+	results []types.MetricDataResult
 	err     error
 }
 
-func (s stubCloudWatch) QueryCloudWatch(v1alpha1.ExternalMetric) ([]*cloudwatch.MetricDataResult, error) {
+func (s stubCloudWatch) QueryCloudWatch(v1alpha1.ExternalMetric) ([]types.MetricDataResult, error) {
 	return s.results, s.err
 }
 
+func float64Ptr(v float64) float64 { return v }
+
 func TestExternalMetricMissingDataAndZero(t *testing.T) {
+	zero := float64(0)
+	fortytwo := float64(42)
 	tests := []struct {
 		name      string
-		results   []*cloudwatch.MetricDataResult
+		results   []types.MetricDataResult
 		err       error
 		wantError bool
 		want      int64
 	}{
 		{name: "no results", wantError: true},
-		{name: "nil result", results: []*cloudwatch.MetricDataResult{nil}, wantError: true},
-		{name: "no datapoints", results: []*cloudwatch.MetricDataResult{{}}, wantError: true},
-		{name: "nil datapoint", results: []*cloudwatch.MetricDataResult{{Values: []*float64{nil}}}, wantError: true},
+		{name: "no datapoints", results: []types.MetricDataResult{{}}, wantError: true},
 		{name: "query failure", err: errors.New("CloudWatch unavailable"), wantError: true},
-		{name: "genuine zero", results: []*cloudwatch.MetricDataResult{{Values: []*float64{aws.Float64(0)}}}},
-		{name: "positive measurement", results: []*cloudwatch.MetricDataResult{{Values: []*float64{aws.Float64(42)}}}, want: 42},
+		{name: "genuine zero", results: []types.MetricDataResult{{Values: []float64{zero}}}},
+		{name: "positive measurement", results: []types.MetricDataResult{{Values: []float64{fortytwo}}}, want: 42},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -83,7 +84,7 @@ func TestExternalMetricDecimalPrecision(t *testing.T) {
 			cache := metriccache.NewMetricCache()
 			cache.Update("ExternalMetric/default/test", "test", v1alpha1.ExternalMetric{})
 			p := &cloudwatchProvider{metricCache: cache, cwManager: stubCloudWatch{
-				results: []*cloudwatch.MetricDataResult{{Values: []*float64{aws.Float64(tt.value)}}},
+				results: []types.MetricDataResult{{Values: []float64{tt.value}}},
 			}}
 			got, err := p.GetExternalMetric("default", labels.Everything(), apiprovider.ExternalMetricInfo{Metric: "test"})
 			if err != nil {
@@ -102,7 +103,7 @@ func TestExternalMetricRejectsNonFiniteValues(t *testing.T) {
 		cache := metriccache.NewMetricCache()
 		cache.Update("ExternalMetric/default/test", "test", v1alpha1.ExternalMetric{})
 		p := &cloudwatchProvider{metricCache: cache, cwManager: stubCloudWatch{
-			results: []*cloudwatch.MetricDataResult{{Values: []*float64{aws.Float64(value)}}},
+			results: []types.MetricDataResult{{Values: []float64{value}}},
 		}}
 		got, err := p.GetExternalMetric("default", labels.Everything(), apiprovider.ExternalMetricInfo{Metric: "test"})
 		if err == nil || got != nil {

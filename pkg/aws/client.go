@@ -5,15 +5,13 @@ import (
 	"os"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
-
-	"github.com/aws/aws-sdk-go/aws/endpoints"
-
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch"
+	"github.com/aws/aws-sdk-go-v2/service/cloudwatch/types"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/awslabs/k8s-cloudwatch-adapter/pkg/apis/metrics/v1alpha1"
-
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"k8s.io/klog"
 )
 
@@ -27,57 +25,57 @@ type cloudwatchManager struct {
 	localRegion string
 }
 
-func (c *cloudwatchManager) getClient(role, region *string) *cloudwatch.CloudWatch {
-	// Using the Config value, create the CloudWatch client
-	sess := session.Must(session.NewSession())
-
-	// Using the SDK's default configuration, loading additional config
-	// and credentials values from the environment variables, shared
-	// credentials, and shared configuration files
-	cfg := aws.NewConfig().WithSTSRegionalEndpoint(endpoints.RegionalSTSEndpoint)
-
-	// check if roleARN is passed
-	if role != nil {
-		creds := stscreds.NewCredentials(sess, *role)
-		cfg = cfg.WithCredentials(creds)
-		klog.Infof("using IAM role ARN: %s", *role)
+func (c *cloudwatchManager) getClient(role *string, region *string) *cloudwatch.Client {
+	// Resolve region: explicit spec field → environment variable → IMDS fallback.
+	resolvedRegion := c.localRegion
+	if region != nil && *region != "" {
+		resolvedRegion = *region
 	}
+	klog.Infof("using AWS Region: %s", resolvedRegion)
 
-	// check if region is set
-	if region != nil {
-		cfg = cfg.WithRegion(*region)
-	} else if aws.StringValue(cfg.Region) == "" {
-		cfg.Region = aws.String(c.localRegion)
+	loadOpts := []func(*config.LoadOptions) error{
+		config.WithRegion(resolvedRegion),
 	}
-	klog.Infof("using AWS Region: %s", aws.StringValue(cfg.Region))
 
 	if os.Getenv("DEBUG") == "true" {
-		cfg = cfg.WithLogLevel(aws.LogDebugWithHTTPBody)
+		loadOpts = append(loadOpts, config.WithClientLogMode(aws.LogRequestWithBody|aws.LogResponseWithBody))
 	}
 
-	svc := cloudwatch.New(sess, cfg)
-	return svc
+	cfg, err := config.LoadDefaultConfig(context.Background(), loadOpts...)
+	if err != nil {
+		klog.Fatalf("unable to load AWS SDK config: %v", err)
+	}
+
+	// Assume a cross-account role when one is specified.
+	if role != nil && *role != "" {
+		klog.Infof("using IAM role ARN: %s", *role)
+		stsClient := sts.NewFromConfig(cfg)
+		cfg.Credentials = aws.NewCredentialsCache(
+			stscreds.NewAssumeRoleProvider(stsClient, *role),
+		)
+	}
+
+	return cloudwatch.NewFromConfig(cfg)
 }
 
-func (c *cloudwatchManager) QueryCloudWatch(request v1alpha1.ExternalMetric) ([]*cloudwatch.MetricDataResult, error) {
+func (c *cloudwatchManager) QueryCloudWatch(request v1alpha1.ExternalMetric) ([]types.MetricDataResult, error) {
 	role := request.Spec.RoleARN
 	region := request.Spec.Region
 	cwQuery := toCloudWatchQuery(&request)
+
 	now := time.Now()
 	endTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), now.Minute(), 0, 0, now.Location())
-	// CloudWatch metrics have latency, we will grab in a 5 minute window and extract the latest value
+	// CloudWatch metrics have latency; grab a 5-minute window and return the latest value.
 	startTime := endTime.Add(-5 * time.Minute)
 
 	cwQuery.EndTime = &endTime
 	cwQuery.StartTime = &startTime
-	cwQuery.ScanBy = aws.String("TimestampDescending")
+	cwQuery.ScanBy = types.ScanByTimestampDescending
 
-	req, resp := c.getClient(role, region).GetMetricDataRequest(&cwQuery)
-	req.SetContext(context.Background())
-
-	if err := req.Send(); err != nil {
-		klog.Errorf("err: %v", err)
-		return []*cloudwatch.MetricDataResult{}, err
+	resp, err := c.getClient(role, region).GetMetricData(context.Background(), &cwQuery)
+	if err != nil {
+		klog.Errorf("CloudWatch GetMetricData error: %v", err)
+		return nil, err
 	}
 
 	return resp.MetricDataResults, nil
