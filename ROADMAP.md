@@ -1,111 +1,56 @@
 # Maintenance roadmap
 
-This fork supports an existing client deployment of the archived AWS adapter. KEDA does not fit that system's requirements, so the goal is to maintain this adapter and improve its reliability.
+Maintain the CloudWatch adapter for existing deployments. AWS SDK v2 migration is complete and merged into `master`; Kubernetes modernization is next.
 
-Original production baseline: `351e923`, deployed from Docker Hub as reported by the maintainer. The build and manifest milestone was merged through PR #1 into `master` at `2a27c66`; its tested GHCR image is `b9570c5ee2f42043ffca4344058c29730bf24a69`. The build milestone and repository maintenance follow-up are maintained on `master`. The merged `adapter-fixes` branch is retired. The `reliability-fixes` branch was merged into `master` at `eefcce5` (covering cache concurrency, fractional precision, and deletion handling). The `aws-sdk-v2` branch migrates the adapter from the deprecated AWS SDK v1 to AWS SDK v2.
+## Completed
 
-## Completed build and manifest milestone
+- [x] Modernize container builds and publish `linux/amd64` and `linux/arm64` images to GHCR.
+- [x] Migrate raw manifests and Helm charts to stable Kubernetes registration APIs; align namespace, service-account, and RBAC settings.
+- [x] Fix concurrent metric discovery, decimal precision, and deletion tombstone handling.
+- [x] Migrate AWS SDK v1 to v2, including cross-account role configuration.
+- [x] Resolve regions from the spec, environment, and shared configuration before a bounded, IMDSv2-capable fallback.
+- [x] Reject missing data, incomplete results, non-finite values, and invalid timestamps; preserve valid zeroes and source timestamps.
+- [x] Add regression tests and pass Linux CI race tests and multi-architecture builds.
 
-- [x] Update the Docker builder to Go 1.27.2 and use one root Dockerfile with a minimal runtime, CA certificates, and license notices.
-- [x] Build and publish `linux/amd64` and `linux/arm64` images together to GHCR using full commit tags; keep `latest` updates explicit.
-- [x] Publish and test image `b9570c5ee2f42043ffca4344058c29730bf24a69`. The maintainer reported successful non-production EKS testing of this image and the migrated manifests.
-- [x] Consolidate raw deployment files into CRD-only `deploy/crd.yaml` and adapter/RBAC `deploy/adapter.yaml`; remove duplicate deployment and legacy build/generation paths.
-- [x] Pin the adapter namespace to `custom-metrics` in raw manifests and charts, preserving required `kube-system` references.
-- [x] Lint and render both charts. The latest consolidated raw/rendered resources pass Kubernetes 1.37 schema validation; the earlier migration also passed 1.36 validation.
-- [ ] Recheck the final consolidated, namespace-pinned manifests in non-production EKS before production rollout. This final cleanup has local validation but has not been reported as cluster-tested.
+## SDK v2 checkpoint — 2026-11-03
 
-The Kubernetes libraries remain on v0.17.7 pending modern metrics-apiserver migration. The reliability fixes and AWS SDK v2 modernization form the completed implementation checkpoint described below. Kubernetes modernization is the next development milestone.
+Merged into `master` at `0a7f649`. Validated candidate: `83491d5f23f75a37c894be8c0650e77050130d5a` (image tag `83491d5`).
 
-## Repository maintenance follow-up
+- **Automated:** Package tests, Linux race tests, and multi-architecture image build passed in [run 41592044874](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/runs/41592044874). Local Linux binaries were also built and their architecture headers verified.
+- **EKS:** Maintainer-provided logs and HPA status confirm startup, CloudWatch retrieval, decimal values, and `ScalingActive=True` / `ValidMetricFound` in staging.
+- **Scope:** SDK migration is complete. Controlled scaling and the deployment-specific checks below remain unverified.
 
-- [x] Remove obsolete Travis CI configuration, Docker Hub badges, missing sample links, and outdated installation output.
-- [x] Default raw manifests and Helm to GHCR `latest` with `Always` pulls; allow users to select a commit or version tag. Publishing `latest` remains an explicit workflow action.
-- [x] Correct entrypoint arguments, align default Helm service accounts, support architecture placement and configurable HTTPS ports, and retain the CRD on Helm uninstall.
-- [x] Correct cross-account IAM documentation to separate target-role CloudWatch permissions, caller `sts:AssumeRole` permissions, and target-role trust.
-- [ ] Publish a selected tested image as `latest` before relying on the new default; record its commit and digest.
-- [ ] Validate these deployment/chart changes in non-production EKS, including custom service-account settings.
+## Next: Kubernetes modernization
 
-## Behavior to preserve
+Work on a fresh branch from `master` and upgrade these components together:
 
-- [x] Return an error when CloudWatch returns no datapoints.
-- [x] Propagate CloudWatch query failures as errors.
-- [x] Keep a valid zero datapoint as zero.
+- [ ] Replace `github.com/kubernetes-incubator/custom-metrics-apiserver` with `sigs.k8s.io/custom-metrics-apiserver`.
+- [ ] Upgrade the `k8s.io/*` libraries from `v0.17.7` and migrate `klog` to `klog/v2`.
+- [ ] Update code-generation scripts and regenerate API types, clients, informers, and listers.
+- [ ] Preserve `metrics.aws/v1alpha1`, the external metrics API, and existing metric behavior.
+- [ ] Pass regression/race tests, build both architectures, and validate on the target EKS versions before release. Manifest schema validation alone does not establish runtime compatibility.
 
-Missing data must never be reported as a successful zero measurement. An error prevents the HPA from using that missing measurement to recommend a scale-down; it does not guarantee that all scaling pauses when the HPA uses multiple metrics.
+## Rollout validation
 
-## Prioritized fixes
+Use the [non-production validation guide](docs/nonprod-validation.md). These checks are separate from completed SDK development:
 
-1. [x] **Protect metric discovery from concurrent cache writes.** Listing now holds the cache read lock and starts with an empty slice, removing leading empty entries. Regression tests cover discovery updates/removals and concurrent list/get/update/remove operations; cache tests passed locally.
-2. [x] **Preserve fractional CloudWatch values.** Decimal quantity parsing replaces integer truncation, preserving values such as `0.9` at Kubernetes quantity precision. Provider tests passed for fractional, sub-milli, large, integer, and zero measurements. Missing/nil datapoints and non-finite values return errors.
-3. [x] **Make region discovery reliable.** Resolve the spec region before environment and shared configuration, using IMDS only as a fallback. The SDK metadata client supports IMDSv2 and a two-second timeout. Successful metadata lookups are cached; failures can recover on a later request. Region/configuration failures return query errors. Regression tests cover precedence, configured-region operation without metadata access, invalid metadata, timeout, and recovery.
-4. [x] **Handle informer deletion tombstones.** Deletion-aware keys and tombstone unwrapping now queue deletions correctly. Regression tests passed for ordinary and tombstone deletions, invalid events, cache/discovery removal, and delayed deletions after recreation.
-5. [x] **Update remaining Kubernetes manifests.** Helm and standalone registrations use stable `v1` APIs and consistent permissive CRD schemas. The merged milestone pinned the published GHCR test image, which the maintainer reported testing successfully. The maintenance follow-up defaults to `latest` with an image-tag override. Final consolidation, namespace pinning, and chart follow-up changes still need a cluster recheck; see [the validation guide](docs/nonprod-validation.md).
+- [ ] Record the deployed image digest and node architecture; retain the previous image for rollback.
+- [ ] Compare the raw external metrics API timestamp with the selected CloudWatch datapoint.
+- [ ] Exercise controlled HPA scale-up and scale-down with the candidate image.
+- [ ] Exercise missing data, query failures, and recovery in an isolated EKS test.
+- [ ] Validate cross-account role assumption and runtime placement on both architectures where used.
+- [ ] Recheck the consolidated raw manifests and Helm installation paths, including custom service-account settings.
+- [ ] Select a validated image for `latest` and record its digest.
 
-## Regression coverage and release checks
+## Later
 
-Add focused tests alongside each fix rather than postponing coverage until the end.
+- [ ] Rename the historical `github.com/awslabs/k8s-cloudwatch-adapter` module path to this fork, separately from the Kubernetes upgrade. Preserve the API group and attribution notices.
 
-- [x] Provider tests for missing results, empty datapoints, query errors, valid zero, and positive integer values.
-- [x] Provider tests for fractional values, quantity precision, and invalid/nil measurements.
-- [x] Cache tests for concurrent access and metric-name listing.
-- [x] Controller tests for ordinary deletions, tombstones, malformed events, and metric recreation.
-- [x] Region discovery tests for configured regions, env vars, and metadata failures.
-- [x] Provider regression tests rejecting incomplete result statuses and invalid timestamps, and preserving the selected datapoint's source timestamp.
-- [x] Run `go test ./pkg/...` including provider and AWS query tests; compile and verify Linux binaries for both architectures.
-- [x] Run `go test -race ./pkg/... -count=1` locally with Go 1.27.2 and GCC 15.2.0 on Windows/amd64. All package race tests passed on the reliability baseline.
-- [x] Trigger CI race-test gate on Linux builder for combined commits. The SDK v2 candidate `83491d5` passed the test and race job in [run 41592044874](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/runs/41592044874).
-- [x] Build and publish a new image with a distinct commit tag, preserving the deployed image as a rollback target.
-- [x] Validate the baseline image and migrated manifests in non-production, as reported by the maintainer. Tests additionally cover missing-data, query-error, and genuine-zero behavior.
-- [ ] Confirm both architecture placements and the final manifest cleanup in EKS before production rollout.
+## Previous milestones
 
-## Reliability milestone validation
-
-- [x] Three focused fixes with regression coverage: cache concurrency/listing, fractional values, and deletion handling.
-- [x] Run `go test ./pkg/... -count=1` with all three changes; all package tests passed on Go 1.27.2.
-- [x] Compile Linux `amd64` and `arm64` binaries with `-mod=readonly`; verify the ELF architecture headers.
-- [x] Run all package race tests locally with Go 1.27.2 and GCC 15.2.0; no data races were reported.
-- [x] Merge reliability milestone to `master` (commit `eefcce5`).
-- [x] Run the separate Linux CI race-test gate before publishing the combined image. The SDK v2 candidate includes these fixes and passed [run 41592044874](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/runs/41592044874).
-- [x] Validate combined reliability image candidate startup and normal metric delivery in non-production EKS, using the SDK v2 candidate. Controlled failure and scaling checks remain follow-ups below.
-
-## AWS SDK v2 checkpoint — 2026-11-03
-
-Candidate commit: `83491d5f23f75a37c894be8c0650e77050130d5a` (short image tag `83491d5`). The implementation checkpoint is accepted for merging `aws-sdk-v2` into `master`; this is not a production rollout approval.
-
-- [x] Complete SDK v2 migration, region precedence and IMDSv2-capable fallback, incomplete-result rejection, and source timestamp preservation.
-- [x] Pass `go test ./pkg/... ./cmd/... -count=1` with region, metadata failure/recovery, result-status, timestamp, zero, and decimal regression tests.
-- [x] Build Linux `amd64` and `arm64` binaries locally and verify their ELF architecture headers.
-- [x] Pass Linux package/race tests and the multi-architecture image build job for the exact candidate in [GitHub Actions run 41592044874](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/runs/41592044874). Local race testing of this candidate was unavailable because GCC was missing; the CI race job passed.
-- [x] Confirm non-production EKS startup, CloudWatch retrieval in `us-east-1`, decimal measurement delivery, and HPA `ScalingActive=True` / `ValidMetricFound`, based on maintainer-provided logs and HPA status.
-
-Remaining rollout checks:
-
-- [ ] Record the deployed image digest and node architecture, and retain the previous image as the rollback target.
-- [ ] Query the raw external metrics API and compare the returned timestamp with the selected CloudWatch datapoint.
-- [ ] Exercise controlled scale-up and scale-down with the candidate. The supplied HPA's active target was 60 with 1–2 replicas; historical scaling before adapter startup does not validate this candidate.
-- [ ] Exercise missing data, query failures, and recovery in an isolated EKS test; automated coverage already verifies the provider behavior.
-- [ ] Validate cross-account role assumption and runtime placement on both architectures where those configurations are used.
-- [ ] Finish the outstanding raw-manifest and Helm configuration checks before production rollout. Normal metric retrieval alone does not cover every installation path.
-
-## Dependency modernization
-
-The build baseline uses Go 1.27 and targets `linux/amd64` and `linux/arm64` through Buildx. Provider regression tests cover missing/nil results and datapoints, query failures, genuine zero, integers, fractional values, and non-finite measurements.
-
-- [x] **Migrate AWS SDK v1 to v2** (`aws-sdk-v2` branch, commit `7d25b39`):
-  - Replaced deprecated monolithic `github.com/aws/aws-sdk-go` (EOL July 2025) with modular `github.com/aws/aws-sdk-go-v2` packages (`aws`, `config`, `service/cloudwatch`, `service/sts`, `credentials/stscreds`).
-  - Switched query results from pointer slices (`[]*cloudwatch.MetricDataResult`) to value slices (`[]types.MetricDataResult`) and values from `[]*float64` to `[]float64`.
-  - Configured client with `config.LoadDefaultConfig`, context-aware requests, STS assume-role provider, and explicit region precedence.
-  - Replaced the manual IMDSv1 availability-zone request with the SDK's IMDSv2-capable region lookup, a two-second timeout, lazy successful-result caching, and retry after lookup failure (`83491d5`).
-  - Upgraded `go.mod` module directive to `go 1.24` and verified all `./pkg/...` tests pass.
-- [x] Add dedicated unit tests for region resolution and IMDS timeout/failure fallback paths.
-- [ ] Migrate Kubernetes libraries and the metrics API server together, preserving provider regression behavior:
-  - Migrate from `github.com/kubernetes-incubator/custom-metrics-apiserver` (historical 2020 incubator release) to modern `sigs.k8s.io/custom-metrics-apiserver`.
-  - Upgrade `k8s.io/*` dependencies (`client-go`, `apimachinery`, `metrics`, `component-base`, `code-generator`) from `v0.17.7` to match modern Kubernetes releases.
-  - Upgrade `klog` from `v1.0.0` to `klog/v2`.
-- [ ] Migrate the historical `github.com/awslabs/k8s-cloudwatch-adapter` Go module path to this fork with all imports and generated-client tooling. Preserve the existing `metrics.aws` API group and copyright notices.
-- [ ] Update code-generation scripts for the upgraded Kubernetes tooling, removing the old GOPATH output layout and verifying both generated API and client files.
-- [ ] Publish and validate each migration on both architectures and reported cluster versions; record image references and rollback settings.
-
-Dependency modernization proceeds in phases: the AWS SDK v2 implementation checkpoint is complete; Kubernetes library and metrics API server modernization follow next on a fresh branch from the merged `master`. Upgrade those dependencies together and regenerate the clients before evaluating runtime compatibility. Keep the module-path rename as a separate follow-up so it does not obscure the Kubernetes migration.
-
-This roadmap records planned work; unchecked items are not implemented or validated yet.
+| Milestone | Reference |
+| --- | --- |
+| Original production baseline | `351e923` |
+| Build and manifest modernization | PR #1, merged at `2a27c66`; tested image `b9570c5ee2f42043ffca4344058c29730bf24a69` |
+| Cache, precision, and deletion fixes | Merged at `eefcce5` |
+| AWS SDK v2 and measurement validation | Merged at `0a7f649`; validated candidate `83491d5` |

@@ -8,13 +8,7 @@ The original implementation was developed by AWS and the contributors to [awslab
 
 This README has been modified for the independently maintained fork.
 
-An implementation of the Kubernetes [Custom Metrics API and External Metrics
-API](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/#support-for-metrics-apis)
-for AWS CloudWatch metrics.
-
-This adapter allows you to scale your Kubernetes deployment using the [Horizontal Pod
-Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) (HPA) with
-metrics from AWS CloudWatch.
+Scale Kubernetes workloads with the [Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) (HPA) using AWS CloudWatch metrics through the External Metrics API.
 
 ## Prerequisites
 
@@ -40,9 +34,7 @@ You can create an IAM policy using this template, and attach it to the [Service 
 
 ## Deploy
 
-Requires a Kubernetes cluster with API aggregation enabled and AWS credentials configured for the adapter. Configure the service-account IAM role and cross-account permissions for your deployment. Kubernetes and AWS library modernization is still pending; see [ROADMAP.md](ROADMAP.md).
-
-Now deploy the adapter to your Kubernetes cluster:
+Requires Kubernetes API aggregation and AWS credentials with the permissions above.
 
 Apply the CRD first, then the adapter and its RBAC. Raw manifests and Helm charts pin the adapter namespace to `custom-metrics`. To use another namespace, clone the repository and edit the adapter namespace references and chart namespace checks. The authentication RoleBinding and HPA service-account references in `kube-system` must remain there. Configure your IAM role and any private-registry pull secret before applying. See the [non-production validation guide](docs/nonprod-validation.md).
 
@@ -53,10 +45,7 @@ kubectl apply -f deploy/adapter.yaml
 kubectl rollout status deployment/k8s-cloudwatch-adapter -n custom-metrics
 ```
 
-This creates a new namespace `custom-metrics` and deploys the necessary ClusterRole, Service Account,
-Role Binding, along with the deployment of the adapter.
-
-Alternatively the crd and adapter can be deployed using the Helm chart in the `/charts` directory:
+Alternatively, install both Helm charts:
 
 ```bash
 helm upgrade --install k8s-cloudwatch-adapter-crd ./charts/k8s-cloudwatch-adapter-crd \
@@ -79,65 +68,43 @@ helm upgrade --install k8s-cloudwatch-adapter ./charts/k8s-cloudwatch-adapter \
   --set-string image.tag=<full-commit-sha-or-version>
 ```
 
-Updating a registry tag does not restart existing pods; use a rollout restart or a changed image reference to deploy another build. Publishing `latest` remains an explicit workflow action.
+Updating a registry tag does not restart existing pods; use a rollout restart or a changed image reference to deploy another build.
 
 ### Verifying the deployment
 
-Next you can query the APIs to see if the adapter is deployed correctly by running:
+Check API discovery, then query a configured metric:
 
 ```bash
-$ kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1" | jq .
-{
-  "kind": "APIResourceList",
-  "apiVersion": "v1",
-  "groupVersion": "external.metrics.k8s.io/v1beta1",
-  "resources": [
-  ]
-}
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1" | jq .
+kubectl get --raw "/apis/external.metrics.k8s.io/v1beta1/namespaces/<namespace>/<metric-name>" | jq .
 ```
 
-## Project Analysis and Enhancements
+## Reliability
 
-This fork focuses on reliability improvements for existing deployments. See the [maintenance roadmap](ROADMAP.md) for the prioritized fixes and validation plans.
+`ExternalMetric` resources define CloudWatch queries. The controller caches these definitions, and the provider retrieves measurements using AWS SDK v2.
 
-### Architecture Overview
+- Missing data, failed queries, incomplete results, and invalid timestamps return errors rather than zero measurements.
+- Valid zeroes and decimal values are preserved, along with the source datapoint timestamp.
+- Cache access is synchronized, and deletion events remove stale metric definitions.
 
-The `k8s-cloudwatch-adapter` operates as a Kubernetes custom metrics adapter, enabling the Horizontal Pod Autoscaler (HPA) to scale deployments based on AWS CloudWatch metrics. Key components include:
+An unavailable measurement cannot recommend an HPA scale-down; other healthy metrics may still permit scale-up.
 
-- **`ExternalMetric` CRD:** Defines the CloudWatch metrics to be used for autoscaling.
-- **Controller:** Watches `ExternalMetric` resources and maintains an in-memory `MetricCache`.
-- **Provider:** Implements the Kubernetes External Metrics API, fetching metric definitions from the cache.
-- **AWS Client:** Interacts with the AWS CloudWatch API to retrieve actual metric data.
+## Next milestone
 
-### Critical Fix: HPA Scale-Down Prevention
+Upgrade Kubernetes client libraries, the metrics API server, and generated clients together. AWS SDK v2 migration is complete and merged into `master`. See [ROADMAP.md](ROADMAP.md) for validation evidence and remaining rollout checks.
 
-A critical enhancement has been implemented in `pkg/provider/provider_external.go` to address HPA behavior during periods of missing CloudWatch data.
-**Previous Behavior:** If CloudWatch returned no data for a requested metric, the adapter would report a value of `0` to the HPA, potentially causing an unintended scale-down of pods.
-**New Behavior:** The adapter returns an error when CloudWatch provides no data or a query fails. The HPA cannot use that unavailable measurement to recommend a scale-down; other healthy metrics may still permit scale-up. A genuine zero remains zero.
+## Development images
 
-The adapter also rejects incomplete CloudWatch results and measurements with missing or invalid timestamps. Successful responses preserve the timestamp of the selected CloudWatch datapoint instead of reporting the request time.
+Images at `ghcr.io/akhil850/k8s-cloudwatch-adapter` support **`linux/amd64` and `linux/arm64`**.
 
-### Future Work
+- Tags: full and seven-character commit SHA, `master`, and release versions. Pin a full commit SHA or version for repeatable deployments.
+- `latest` updates on stable version-tag releases or a manual run with `update_latest=true`.
+- For branch images, run [Docker build and publish](https://github.com/akhil850/k8s-cloudwatch-adapter/actions/workflows/docker-publish.yml) manually, select the branch, and set `publish=true`.
+- Local build: `make docker TAG=<tag>`. Build and publish both architectures: `make docker-multiarch TAG=<tag>`.
 
-See the [maintenance roadmap](ROADMAP.md) for prioritized reliability fixes, regression coverage, and release checks for this fork.
+Private GHCR packages require an `imagePullSecret` with package read access.
 
-Our immediate next steps involve:
-
-- Migrating Kubernetes client libraries and the metrics API server together.
-- Completing deployment acceptance checks for the AWS SDK v2 migration; implementation, regression tests, Linux CI race tests, and normal non-production EKS metric delivery are complete.
-- Further code refactoring and bug fixes as identified.
-
-## More docs
-
-### Development images
-
-The GitHub Actions workflow runs package tests with the race detector before building and publishes images to `ghcr.io/akhil850/k8s-cloudwatch-adapter` on pushes to `master` and `reliability-fixes`. Each image is tagged with the full commit SHA; version-tag pushes also publish the version tag. Pull requests build without publishing. Manual runs can optionally publish and update `latest`. Intermediate commits that do not need an image use `[skip ci]`; the final reliability commit builds the combined candidate when pushed.
-
-Each tag contains both `linux/amd64` and `linux/arm64` images for mixed EKS fleets. The Dockerfile uses Go 1.27.2 to cross-compile for each target, runs the package tests before compilation, and packages the static binary with CA certificates and license notices in a minimal runtime image. Library modernization is tracked in [ROADMAP.md](ROADMAP.md); these build changes alone do not establish Kubernetes 1.36/1.37 runtime compatibility.
-
-Use `ghcr.io/akhil850/k8s-cloudwatch-adapter:<full-commit-sha>` as the image in your EKS test deployment. The workflow authenticates with GitHub's built-in token and requires no Docker Hub secrets. New GHCR packages default to private: make the package public in its GitHub package settings for anonymous pulls, or configure an EKS `imagePullSecret` with a GitHub personal access token (classic) that has `read:packages` permission and access to the package.
-
-For local builds, `make docker` builds one image and `make docker-multiarch` builds and publishes both architectures. Set `TAG=<commit-or-version>` to choose a tag; the default is `latest`. Code-generation scripts under `hack/` support the generated Kubernetes clients. A new development branch must be added to the workflow's push filters or published with a manual run.
+## Documentation
 
 - [Configuring cross account metric example](docs/cross-account.md)
 - [ExternalMetric CRD schema](docs/schema.md)
