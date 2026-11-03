@@ -2,20 +2,18 @@ name: Docker build and publish
 
 on:
   push:
-    branches:
-      - '**'
-    tags:
-      - 'v*.*.*'
+    branches: [master]
+    tags: ['v*.*.*']
   pull_request:
     branches: [master]
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the commit image to GitHub Container Registry
+        description: 'Publish image to GitHub Container Registry'
         type: boolean
-        default: false
+        default: true
       update_latest:
-        description: Also update latest (requires publish)
+        description: 'Also update :latest tag'
         type: boolean
         default: false
 
@@ -40,6 +38,7 @@ jobs:
           go-version: '1.27.2'
       - name: Run package tests and race detector
         run: go test -race ./pkg/...
+
   build:
     needs: test
     permissions:
@@ -47,41 +46,71 @@ jobs:
       packages: write
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    env:
-      PUBLISH: ${{ (github.event_name == 'push' && (github.ref != 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))) || (github.event_name == 'workflow_dispatch' && inputs.publish) }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
           persist-credentials: false
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f95db51fddba0c2d1ec667646a06c2ce06100226 # v3.0.0
+
+      - name: Determine publish mode
+        id: prep
+        run: |
+          PUBLISH="false"
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            PUBLISH="true"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.publish }}" == "true" ]]; then
+            PUBLISH="true"
+          fi
+          echo "publish=${PUBLISH}" >> $GITHUB_OUTPUT
+
       - name: Log into GitHub Container Registry
-        if: env.PUBLISH == 'true'
+        if: steps.prep.outputs.publish == 'true'
         env:
           REGISTRY_USERNAME: ${{ github.actor }}
           REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io --username "$REGISTRY_USERNAME" --password-stdin
-      - name: Build both architectures and optionally publish
+
+      - name: Build and optionally publish multi-arch images
         env:
+          PUBLISH: ${{ steps.prep.outputs.publish }}
           UPDATE_LATEST: ${{ github.event_name == 'workflow_dispatch' && inputs.update_latest }}
         run: |
           SHORT_SHA="${GITHUB_SHA::7}"
           tags=(--tag "${IMAGE_NAME}:${SHORT_SHA}" --tag "${IMAGE_NAME}:${GITHUB_SHA}")
+
+          # If pushed to master, also tag :master
+          if [[ "$GITHUB_REF" == "refs/heads/master" ]]; then
+            tags+=(--tag "${IMAGE_NAME}:master")
+          fi
+
+          # If release tag (e.g. v0.1.0 or v0.1.0-rc1)
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tags+=(--tag "${IMAGE_NAME}:${GITHUB_REF_NAME}")
-            tags+=(--tag "${IMAGE_NAME}:latest")
+            # If not a pre-release (doesn't contain a hyphen like -rc), update :latest
+            if [[ "$GITHUB_REF_NAME" != *-* ]]; then
+              tags+=(--tag "${IMAGE_NAME}:latest")
+            fi
           fi
+
+          # Manual dispatch override to force update latest
           if [[ "$PUBLISH" == "true" && "$UPDATE_LATEST" == "true" ]]; then
             tags+=(--tag "${IMAGE_NAME}:latest")
           fi
+
           output=(--output type=cacheonly)
-          if [[ "$PUBLISH" == "true" ]]; then output=(--push); fi
+          if [[ "$PUBLISH" == "true" ]]; then
+            output=(--push)
+          fi
+
           docker buildx build --platform linux/amd64,linux/arm64 \
             --file Dockerfile "${tags[@]}" "${output[@]}" \
             --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" .
+
       - name: Log out of GitHub Container Registry
-        if: always()
+        if: always() && steps.prep.outputs.publish == 'true'
         run: docker logout ghcr.io
